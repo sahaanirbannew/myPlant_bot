@@ -105,7 +105,7 @@ class Orchestrator:
 
                 if pending_question == "soil_type" and extracted.get("soil_type"):
                     plant["soil_type"] = extracted["soil_type"]
-                    self._persist_plant(user_id, plant)
+                    self._persist_plant(user_id, plant, timestamp)
                 elif pending_question == "watering_frequency" and extracted.get("days"):
                     preferences = user_memory.get("plant_preferences", {})
                     plant_prefs = preferences.get(plant_id, {})
@@ -133,7 +133,7 @@ class Orchestrator:
                         if extracted.get("windows"):
                             room["windows"] = extracted["windows"]
                     plant["room_id"] = room["id"]
-                    self._persist_plant(user_id, plant)
+                    self._persist_plant(user_id, plant, timestamp)
                     self._persist_rooms(user_id, rooms)
                     
                     preferences = user_memory.get("plant_preferences", {})
@@ -176,11 +176,11 @@ class Orchestrator:
         plant = resolution["plant"]
         if resolution["created"]:
             plants.append(plant)
-            self._persist_plant(user_id, plant)
+            self._persist_plant(user_id, plant, timestamp)
 
         extraction = self.memory_extractor.extract(message=message, timestamp=timestamp)
         plant = self._apply_room_facts(user_id=user_id, plant=plant, room_facts=extraction["room_facts"])
-        self._persist_plant(user_id=user_id, plant=plant)
+        self._persist_plant(user_id=user_id, plant=plant, timestamp=timestamp)
         self._persist_events(user_id=user_id, plant_id=plant["id"], extraction=extraction, timestamp=timestamp)
 
         memory_payload = {
@@ -258,11 +258,11 @@ class Orchestrator:
             f"{timestamp} | {message}\n",
         )
 
-    def _persist_plant(self, user_id: str, plant: dict[str, str]) -> None:
-        """Task: Upsert a plant row in the plants CSV file.
-        Input: The user ID and plant row dictionary to persist.
-        Output: The plants CSV rewritten with the latest plant state.
-        Failures: Raises OSError if the plants CSV cannot be written.
+    def _persist_plant(self, user_id: str, plant: dict[str, str], timestamp: str) -> None:
+        """Task: Upsert a plant row in the plants CSV file and log to ledger.
+        Input: The user ID, plant row dictionary to persist, and action timestamp.
+        Output: The plants CSV rewritten and ledger updated.
+        Failures: Raises OSError if the IO write fails.
         """
 
         plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id))
@@ -270,6 +270,13 @@ class Orchestrator:
         if not any(row["id"] == plant["id"] for row in plants):
             updated_plants.append(plant)
         self.file_manager.write_csv(self.file_manager.plants_csv_path(user_id), updated_plants, PLANT_HEADERS)
+        self.file_manager.append_plant_ledger_entry(
+            user_id=user_id,
+            plant_id=plant["id"],
+            entry_type="profile_update",
+            payload=plant,
+            timestamp=timestamp,
+        )
 
     def _persist_events(
         self,
@@ -285,19 +292,27 @@ class Orchestrator:
         """
 
         for event in extraction["time_series_events"]:
+            payload = {
+                "event_id": make_id("event"),
+                "plant_id": plant_id,
+                "event_type": event["event_type"],
+                "subtype": event.get("subtype", ""),
+                "value": event.get("value", ""),
+                "metadata": json.dumps(event.get("metadata", {}), sort_keys=True),
+                "timestamp": event.get("timestamp", timestamp),
+                "source": "cli",
+            }
             self.file_manager.append_csv(
                 self.file_manager.events_csv_path(user_id),
-                {
-                    "event_id": make_id("event"),
-                    "plant_id": plant_id,
-                    "event_type": event["event_type"],
-                    "subtype": event.get("subtype", ""),
-                    "value": event.get("value", ""),
-                    "metadata": json.dumps(event.get("metadata", {}), sort_keys=True),
-                    "timestamp": event.get("timestamp", timestamp),
-                    "source": "cli",
-                },
+                payload,
                 EVENT_HEADERS,
+            )
+            self.file_manager.append_plant_ledger_entry(
+                user_id=user_id,
+                plant_id=plant_id,
+                entry_type="care_event",
+                payload=payload,
+                timestamp=payload["timestamp"],
             )
 
     def _persist_rooms(self, user_id: str, rooms: list[dict[str, str]]) -> None:

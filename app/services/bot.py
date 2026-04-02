@@ -212,6 +212,22 @@ class BotService:
                 return
 
             incoming_text = message.text.strip()
+            if incoming_text == "/clear_data":
+                await self.key_store.remove_api_key(user_id)
+                await self.session_manager.clear_session(user_id)
+                if self.plant_setup_store:
+                    self.plant_setup_store.file_manager.wipe_user_data(str(user_id))
+                
+                await self._send_and_log(
+                    trace_id=trace_id,
+                    chat_id=chat_id,
+                    text="All your data, plant records, rooms, and Gemini API keys have been completely deleted.",
+                    user_id=user_id,
+                    telegram_text=incoming_text,
+                    reason="Handled /clear_data.",
+                )
+                return
+
             if incoming_text == "/setup":
                 await self.session_manager.mark_waiting_for_key(user_id)
                 self._log_trace(

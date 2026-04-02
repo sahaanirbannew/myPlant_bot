@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -136,6 +137,30 @@ class FileManager:
 
     def conversation_history_path(self, user_id: str) -> Path:
         return self.user_dir(user_id) / "conversation_history.json"
+
+    def plant_ledger_path(self, user_id: str, plant_id: str) -> Path:
+        return self.user_dir(user_id) / f"plant_{plant_id}_history.jsonl"
+
+    def wipe_user_data(self, user_id: str) -> None:
+        """Task: Recursively delete all local data mapped to this user identifier.
+        Input: The Telegram user id.
+        Output: Disk updated; internal directories removed.
+        Failures: File not found errors are suppressed to remain idempotent.
+        """
+        path = self.user_dir(user_id)
+        if path.exists() and path.is_dir():
+            shutil.rmtree(path)
+
+    def append_plant_ledger_entry(self, user_id: str, plant_id: str, entry_type: str, payload: dict[str, Any], timestamp: str) -> None:
+        """Task: Write a time-series line entry documenting an event or update for a specific plant.
+        Input: the user id, plant id, what type of event/update this is, the state payload, and the timestamp.
+        Output: Data appended to plant_<id>.jsonl
+        """
+        path = self.plant_ledger_path(user_id, plant_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {"timestamp": timestamp, "type": entry_type, "data": payload}
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
 
     def load_conversation_state(self, user_id: str) -> dict[str, Any] | None:
         """Task: Load the active conversation state. Returns None if it doesn't exist."""

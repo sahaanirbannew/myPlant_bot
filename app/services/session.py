@@ -88,8 +88,8 @@ class SessionManager:
             session.awaiting_setup_key = False
             session.last_active_at = datetime.now(timezone.utc)
 
-    async def clear_api_key(self, user_id: int) -> None:
-        """Task: Remove the cached Gemini API key from active memory for a user.
+    async def clear_session(self, user_id: int) -> None:
+        """Task: Remove all cached session data including Gemini API key from active memory for a user.
         Input: The user's numeric Telegram id.
         Output: None; the user session is cleared or removed from the cache.
         Failures: No failure is expected; missing sessions are ignored.

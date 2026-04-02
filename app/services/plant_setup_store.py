@@ -82,6 +82,15 @@ class PlantSetupStore:
                 room_id_by_name=room_id_by_name,
                 timestamp=saved_at,
             )
+            
+            self.file_manager.append_plant_ledger_entry(
+                user_id=user_key,
+                plant_id=plant_row["id"],
+                entry_type="profile_update",
+                payload=plant_row,
+                timestamp=saved_at,
+            )
+
             write_summaries.append(
                 {
                     "agent": "setup_memory_agent",
