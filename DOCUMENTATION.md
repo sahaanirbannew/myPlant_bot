@@ -34,6 +34,12 @@
 - In-memory session data expires after 3 minutes of inactivity.
 - The persistent source of truth remains the CSV file.
 
+## HTTPS and Telegram webhook setup
+
+- The current deployment target uses `https://3.109.122.172:8443` as `APP_BASE_URL`.
+- A self-signed certificate is acceptable for Telegram webhook delivery when the public certificate is uploaded during `setWebhook`.
+- The service reads `SSL_CERTFILE` and `SSL_KEYFILE` from `.env` and starts uvicorn with TLS automatically when both are present.
+
 ## EC2 bootstrap
 
 Run the bootstrap script on the Ubuntu EC2 host:

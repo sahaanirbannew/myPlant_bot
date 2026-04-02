@@ -10,6 +10,7 @@ APP_USER="${APP_USER:-ec2-user}"
 APP_DIR="${APP_DIR:-/home/${APP_USER}/myPlant_bot}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+START_SCRIPT="${APP_DIR}/scripts/start_server.sh"
 
 install_packages() {
   # Task: Install required operating system packages using the host package manager.
@@ -60,7 +61,8 @@ Type=simple
 User=${APP_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
-ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Environment=APP_DIR=${APP_DIR}
+ExecStart=/bin/bash ${START_SCRIPT}
 Restart=always
 RestartSec=5
 KillSignal=SIGINT

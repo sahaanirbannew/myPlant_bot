@@ -62,6 +62,10 @@
 - `POST /telegram/register-webhook` registers the webhook URL defined by `APP_BASE_URL`.
 - `GET /health` returns a simple readiness payload.
 
+## Production TLS note
+
+Telegram webhooks require HTTPS. For the current EC2 setup, the deployment uses a self-signed certificate on port `8443`, which Telegram supports when the public certificate is uploaded during `setWebhook`.
+
 ## GitHub Actions deployment
 
 Every push to `main` runs `.github/workflows/deploy.yml`, which:

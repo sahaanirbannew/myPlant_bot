@@ -7,7 +7,8 @@ Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/myPlant_bot
 EnvironmentFile=/home/ec2-user/myPlant_bot/.env
-ExecStart=/home/ec2-user/myPlant_bot/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Environment=APP_DIR=/home/ec2-user/myPlant_bot
+ExecStart=/bin/bash /home/ec2-user/myPlant_bot/scripts/start_server.sh
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
