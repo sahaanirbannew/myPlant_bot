@@ -23,6 +23,7 @@ class UserSession:
     last_active_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     first_active_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     awaiting_setup_key: bool = False
+    awaiting_setup_time_slot: bool = False
 
 
 class SessionManager:
@@ -87,6 +88,18 @@ class SessionManager:
         async with self._lock:
             session.gemini_api_key = gemini_api_key
             session.awaiting_setup_key = False
+            session.awaiting_setup_time_slot = True
+            session.last_active_at = datetime.now(timezone.utc)
+
+    async def mark_setup_complete(self, user_id: int) -> None:
+        """Task: Mark that the entire setup flow, including time slot, is finished.
+        Input: The user's numeric Telegram id.
+        Output: None; the active session states are updated.
+        """
+        session = await self.get_or_load_session(user_id)
+        async with self._lock:
+            session.awaiting_setup_key = False
+            session.awaiting_setup_time_slot = False
             session.last_active_at = datetime.now(timezone.utc)
 
     async def clear_session(self, user_id: int) -> UserSession | None:

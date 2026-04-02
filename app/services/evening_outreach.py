@@ -57,7 +57,7 @@ class EveningOutreachStore:
         self._write_json(self.registry_path, payload)
         return record
 
-    def due_users(self, now_utc: datetime) -> list[dict[str, Any]]:
+    def due_users(self, now_utc: datetime, time_slot_store: Any = None) -> list[dict[str, Any]]:
         """Task: Return users whose deterministic evening outreach time has passed and was not sent today.
         Input: The current UTC datetime used to evaluate local evening windows.
         Output: User registry records that should receive a proactive message now.
@@ -70,14 +70,23 @@ class EveningOutreachStore:
         now_local = now_utc.astimezone(LOCAL_TIMEZONE)
         today_key = now_local.strftime("%Y-%m-%d")
 
-        if now_local.hour < 17 or now_local.hour >= 19:
-            return []
-
         due_records: list[dict[str, Any]] = []
         for user_key, record in registry.items():
-            scheduled_minute = self._scheduled_minute(user_key=user_key, date_key=today_key)
-            current_minute = (now_local.hour - 17) * 60 + now_local.minute
-            if current_minute < scheduled_minute:
+            user_id = int(record["user_id"])
+            if time_slot_store:
+                start_hour, end_hour = time_slot_store.get_time_slot(user_id)
+            else:
+                start_hour, end_hour = 17, 19
+            
+            if now_local.hour < start_hour or now_local.hour >= end_hour:
+                continue
+
+            # Deterministic minute within the user's slot
+            duration_minutes = (end_hour - start_hour) * 60
+            scheduled_offset = sum(ord(character) for character in f"{user_key}:{today_key}") % duration_minutes
+            
+            current_minute_offset = (now_local.hour - start_hour) * 60 + now_local.minute
+            if current_minute_offset < scheduled_offset:
                 continue
             if state.get(user_key) == today_key:
                 continue

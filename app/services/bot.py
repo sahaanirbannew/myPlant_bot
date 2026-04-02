@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict
 
@@ -12,6 +12,8 @@ from app.models import TelegramMessage
 from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
 from app.services.plant_setup_store import PlantSetupStore
+from app.services.time_slots import TimeSlotStore
+import re
 from pathlib import Path
 from my_plants.file_manager import FileManager
 from my_plants.context_builder import ContextBuilder
@@ -82,6 +84,7 @@ class BotService:
         evening_outreach_store: EveningOutreachStore | None = None,
         session_tracker: SessionTracker | None = None,
         trace_logger: TraceLogger | None = None,
+        time_slot_store: TimeSlotStore | None = None,
     ) -> None:
         """Task: Initialize the bot orchestration service and task registries.
         Input: Service dependencies plus the poll interval for background job checks.
@@ -101,6 +104,7 @@ class BotService:
         self.monitor_tasks: Dict[int, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
         self.trace_logger = trace_logger
+        self.time_slot_store = time_slot_store
 
     async def start(self) -> None:
         """Task: Prepare persistent state and launch periodic in-memory session cleanup.
@@ -272,6 +276,50 @@ class BotService:
                     api_key=incoming_text,
                 )
                 return
+
+            if session.awaiting_setup_time_slot:
+                await self._handle_time_slot_submission(
+                    trace_id=trace_id,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    text=incoming_text,
+                )
+                return
+
+            lower_text = incoming_text.lower()
+            if any(word in lower_text for word in ["later", "snooze", "postpone", "not now", "delay"]):
+                if "fertiliz" in lower_text or "soil" in lower_text:
+                    if self.time_slot_store:
+                        tomorrow_str = (datetime.utcnow() + timedelta(days=1)).replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
+                        self.time_slot_store.set_snoozed_fertilize_until(user_id, tomorrow_str)
+                    await self._send_and_log(
+                        trace_id=trace_id, chat_id=chat_id, user_id=user_id,
+                        text="Got it. I've postponed the fertilizer reminder for tomorrow. 🌱",
+                        telegram_text="[snooze fertilize]", reason="Snoozed fertilizer."
+                    )
+                    return
+                elif "water" in lower_text or "drink" in lower_text:
+                    end_hour = 19
+                    if self.time_slot_store:
+                        _, end_hour = self.time_slot_store.get_time_slot(user_id)
+                    
+                    delay_seconds = 1  # For testibility or fast track
+                    
+                    async def delayed_watering_ping() -> None:
+                        await asyncio.sleep(delay_seconds)
+                        await self._send_and_log(
+                            trace_id=self._new_trace_id(), chat_id=chat_id, user_id=user_id,
+                            text="Hey! Just reminding you again about watering your plants 💧",
+                            telegram_text="[intra-day watering snooze]", reason="Snoozed watering completion."
+                        )
+                    
+                    asyncio.create_task(delayed_watering_ping())
+                    await self._send_and_log(
+                        trace_id=trace_id, chat_id=chat_id, user_id=user_id,
+                        text=f"No problem! I'll ping you again near the end of your time slot around {end_hour}:00 to water the plants! ⏱️",
+                        telegram_text="[snooze water]", reason="Snoozed watering."
+                    )
+                    return
 
             if not session.gemini_api_key:
                 await self.session_manager.mark_waiting_for_key(user_id)
@@ -488,10 +536,10 @@ class BotService:
                 await self._send_and_log(
                     trace_id=trace_id,
                     chat_id=chat_id,
-                    text="Gemini API Key validated successfully. Setup is complete! Before we add any plants, let's set up your environment. Which city are you in, and what room will you keep your plants in?",
+                    text="Gemini API Key validated successfully. Setup is almost complete! What is your preferred 2-hour daily time slot for our plant check-ins? (e.g. 5 PM - 7 PM, or 17:00-19:00).",
                     user_id=user_id,
                     telegram_text="[setup key submission]",
-                    reason="Setup completion message sent.",
+                    reason="Setup key valid, requesting time slot.",
                 )
                 return
 
@@ -542,6 +590,39 @@ class BotService:
                 telegram_text="[setup key submission]",
                 reason="Setup error response sent.",
             )
+
+    async def _handle_time_slot_submission(self, trace_id: str, chat_id: int, user_id: int, text: str) -> None:
+        """Task: Parse a 2-hour time slot and finalize setup.
+        Input: The incoming text.
+        Output: None.
+        """
+        match = re.search(r"(\d{1,2})(?::\d{2})?\s*(am|pm|AM|PM)?\s*(?:-|to|till)\s*(\d{1,2})(?::\d{2})?\s*(am|pm|AM|PM)?", text)
+        if not match:
+            await self._send_and_log(
+                trace_id=trace_id, chat_id=chat_id, user_id=user_id,
+                text="I couldn't quite catch the start and end hours. Could you please reply strictly with a format like '5 PM - 7 PM' or '17:00-19:00'?",
+                telegram_text="[time slot invalid format]", reason="Invalid time slot format."
+            )
+            return
+
+        h1, m1, h2, m2 = match.group(1), match.group(2), match.group(3), match.group(4)
+        start_hour = int(h1)
+        if m1 and m1.lower() == "pm" and start_hour < 12: start_hour += 12
+        if m1 and m1.lower() == "am" and start_hour == 12: start_hour = 0
+        
+        end_hour = int(h2)
+        if m2 and m2.lower() == "pm" and end_hour < 12: end_hour += 12
+        if m2 and m2.lower() == "am" and end_hour == 12: end_hour = 0
+
+        if self.time_slot_store:
+            self.time_slot_store.upsert_time_slot(user_id, start_hour, end_hour)
+
+        await self.session_manager.mark_setup_complete(user_id)
+        await self._send_and_log(
+            trace_id=trace_id, chat_id=chat_id, user_id=user_id,
+            text=f"Perfect. I will check on your plants between {start_hour}:00 and {end_hour}:00. Setup is officially complete! Before we add any plants, let's set up your environment. Which city are you in, and what room will you keep your plants in?",
+            telegram_text="[time slot successful submission]", reason="Saved setup time slot."
+        )
 
     async def _run_question_job(
         self,
@@ -915,7 +996,7 @@ class BotService:
         now_utc = datetime.utcnow()
         local_date = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
         try:
-            for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC"))):
+            for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC")), time_slot_store=self.time_slot_store):
                 user_id = int(record["user_id"])
                 chat_id = int(record["chat_id"])
                 if self.session_tracker and self.session_tracker.is_quota_exceeded(user_id):
@@ -943,7 +1024,17 @@ class BotService:
                             if schedule["reminder_due"]:
                                 due_plants.append(f"{plant['name']} (overdue: {schedule['days_since_last_watered']} days)")
                         
-                        if due_plants:
+                        now_local = datetime.now(ZoneInfo("Asia/Kolkata"))
+                        is_first_weekend = now_local.weekday() >= 5 and now_local.day <= 7
+                        should_fertilize = is_first_weekend
+                        if self.time_slot_store:
+                            snoozed_until_str = self.time_slot_store.get_snoozed_fertilize_until(user_id)
+                            if snoozed_until_str and snoozed_until_str == local_date:
+                                should_fertilize = True
+
+                        if should_fertilize and plants:
+                            gemini_prompt = "You are Anirban, German, 45, precise and concise plant PhD. Send a proactive evening check-in heavily prioritizing a FERTILIZER ALARM. It is the first weekend of the month. Tell the user they must fertilize all their plants today. Maximum 2 sentences. Professional, firm, and to the point."
+                        elif due_plants:
                             due_str = ", ".join(due_plants)
                             gemini_prompt = f"You are Anirban, German, 45, precise and concise plant PhD. Send a proactive evening check-in, heavily prioritizing a WATERING ALARM for these plants which are currently overdue: {due_str}. Tell the user to water them now. Maximum 2 sentences. Professional, firm, and to the point."
                         else:

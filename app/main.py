@@ -19,6 +19,7 @@ from app.services.session_tracker import SessionTracker
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
 from app.services.trace_logger import TraceLogger
+from app.services.time_slots import TimeSlotStore
 
 
 settings = load_settings()
@@ -46,6 +47,7 @@ bot_service = BotService(
     plant_setup_store=plant_setup_store,
     evening_outreach_store=evening_outreach_store,
     trace_logger=trace_logger,
+    time_slot_store=TimeSlotStore(Path("data/user_time_slots.csv")),
 )
 
 
