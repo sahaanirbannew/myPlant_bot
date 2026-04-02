@@ -44,11 +44,15 @@ bash scripts/ec2_setup.sh
 
 What it does:
 
-- installs `git`, `curl`, and Python 3.11
-- creates `/opt/myplant-bot`
+- installs `git`, `curl`, and Python 3 using either `dnf` or `apt-get`
+- creates `/home/ec2-user/myPlant_bot` by default
 - writes and enables the `systemd` unit
 - reloads `systemd`
-- optionally opens port `8000` if `ufw` is active
+- optionally opens port `8000` if `ufw` or `firewalld` is active
+
+Verified infrastructure detail:
+
+- The current EC2 instance at `3.109.122.172` was confirmed to be Amazon Linux 2023, not Ubuntu.
 
 ## systemd service
 

@@ -9,7 +9,7 @@
 - In-memory per-user session cache that expires after 3 minutes of inactivity
 - Text-only request handling with simple jailbreak detection
 - Background Gemini question answering with 5 retries and 2-second backoff
-- GitHub Actions deployment to Ubuntu EC2 over SSH
+- GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 
 ## Project structure
@@ -73,11 +73,13 @@ Every push to `main` runs `.github/workflows/deploy.yml`, which:
 - installs dependencies from `requirements.txt`
 - restarts the `systemd` service
 
+The workflow supports both Ubuntu-style hosts and Amazon Linux hosts. During validation against the current instance, the target host was confirmed to be Amazon Linux 2023 with `python3` and `systemd` already available.
+
 ## Required GitHub Actions variables
 
 - `EC2_HOST`: Public EC2 hostname or IP address
 - `EC2_USER`: SSH user, for your instance `ec2-user`
-- `EC2_APP_DIR`: Remote deployment directory, for example `/home/ec2-user/myPlant_bot`
+- `EC2_APP_DIR`: Remote deployment directory, for this host `/home/ec2-user/myPlant_bot`
 - `EC2_GITHUB_REPOSITORY_URL`: Git clone URL reachable from EC2, for example `https://github.com/sahaanirbannew/myPlant_bot.git`
 - `EC2_KNOWN_HOSTS`: Pinned `known_hosts` entry for the EC2 server
 

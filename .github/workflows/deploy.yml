@@ -50,10 +50,31 @@ jobs:
 
           APP_NAME="myplant-bot"
           SERVICE_NAME="${APP_NAME}.service"
-          PYTHON_BIN="python3.11"
+          PYTHON_BIN="python3"
+
+          install_packages() {
+            # Install the requested packages on either Amazon Linux or Ubuntu.
+            if command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y "$@"
+              return
+            fi
+
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y "$@"
+              return
+            fi
+
+            echo "Unsupported package manager on target host." >&2
+            exit 1
+          }
+
+          if ! command -v git >/dev/null 2>&1; then
+            install_packages git
+          fi
 
           sudo mkdir -p "${APP_DIR}"
-          sudo chown -R "${USER}:${USER}" "${APP_DIR}"
+          sudo chown -R "${EC2_USER}:${EC2_USER}" "${APP_DIR}"
 
           if [ ! -d "${APP_DIR}/.git" ]; then
             git clone --branch "${GITHUB_REPOSITORY_BRANCH}" "${GITHUB_REPOSITORY_URL}" "${APP_DIR}"
@@ -64,15 +85,17 @@ jobs:
           git checkout "${GITHUB_REPOSITORY_BRANCH}"
           git reset --hard "origin/${GITHUB_REPOSITORY_BRANCH}"
 
-          if [ -n "${APP_ENV_FILE_BASE64}" ]; then
-            printf '%s' "${APP_ENV_FILE_BASE64}" | base64 --decode > .env
-            chmod 600 .env
+          if [ -z "${APP_ENV_FILE_BASE64}" ]; then
+            echo "EC2_ENV_FILE_BASE64 is required for deployment." >&2
+            exit 1
           fi
 
           if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y python3.11 python3.11-venv
+            install_packages python3
           fi
+
+          printf '%s' "${APP_ENV_FILE_BASE64}" | base64 --decode > .env
+          chmod 600 .env
 
           "${PYTHON_BIN}" -m venv .venv
           ./.venv/bin/pip install --upgrade pip
