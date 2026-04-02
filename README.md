@@ -18,6 +18,7 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Sliding 10-message conversational context history injected dynamically to resolve fragmentary pronouns and answers
 - Centralized 4-section structural prompt architecture deployed uniformly across JSON extraction and user-facing completion engines
 - Contextually self-aware bot that infers nouns logically from prior bot questions rather than looping with clarification queries
+- Native Dynamic Entity Deletion enables the LLM extraction payload to gracefully backtrack and excise mistakenly generated CSV resources
 - **`/clear_data`** privacy command cleanly erases API keys, wipes session data, and drops all recursive storage isolated files
 - Plant Time-Series Ledgers create scalable, immutable, timestamped `.jsonl` sequences of life events per plant
 - Proactive setup questions can occur naturally via evening localized time windows
