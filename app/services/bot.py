@@ -817,7 +817,7 @@ class BotService:
         try:
             history = self.plant_setup_store.file_manager.load_conversation_history(str(user_id))
             if history:
-                history_text = "\n".join(f"{h['role'].capitalize()}: {h['message']}" for h in history[-6:])
+                history_text = "\n".join(f"{h['role'].capitalize()}: {h['message']}" for h in history[-10:])
         except Exception:
             pass
 
@@ -936,10 +936,11 @@ class BotService:
         return (
             f"{SYSTEM_PERSONA_PROMPT}\n\n"
             "Extract static plant setup information from the user's latest message.\n"
+            "Crucially, if the latest message lacks a room name or plant name (e.g., 'east', 'every 5 days'), look at the Recent Conversation Context to infer exactly which room or plant the user is answering about!\n"
             "Be objective and concise.\n"
             "The user may write in any language.\n"
             "Understand the message in that language, but translate every extracted value into concise English before returning JSON.\n"
-            "Do not assume facts. If a plant name, species, cultivar, or placement is ambiguous, leave that field empty.\n"
+            "Do not assume facts arbitrarily, but DO heavily use the Recent Conversation Context to resolve missing nouns (e.g., if the bot just asked 'Which direction do windows face in bedroom?', and user says 'east', extract bedroom: east).\n"
             "If the message sounds descriptive rather than botanical, do not invent a plant variety.\n"
             "Example: 'white-green pothos' is not enough to infer the exact variety.\n"
             "Return only valid JSON with this shape:\n"
