@@ -1,0 +1,26 @@
+{
+  "bangalore": {
+    "humidity": "medium",
+    "temperature_band": "moderate"
+  },
+  "chennai": {
+    "humidity": "high",
+    "temperature_band": "hot"
+  },
+  "default": {
+    "humidity": "medium",
+    "temperature_band": "moderate"
+  },
+  "delhi": {
+    "humidity": "low",
+    "temperature_band": "hot"
+  },
+  "mumbai": {
+    "humidity": "high",
+    "temperature_band": "warm"
+  },
+  "pune": {
+    "humidity": "medium",
+    "temperature_band": "warm"
+  }
+}

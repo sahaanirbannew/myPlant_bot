@@ -1,0 +1,31 @@
+{
+  "generic": {
+    "light_preference": "medium",
+    "notes": [
+      "Check soil dryness before watering."
+    ],
+    "watering_interval_days": 7
+  },
+  "peace lily": {
+    "light_preference": "low_to_medium",
+    "notes": [
+      "This plant likes slightly more regular moisture."
+    ],
+    "watering_interval_days": 5
+  },
+  "pothos": {
+    "light_preference": "medium",
+    "notes": [
+      "Keep out of harsh direct afternoon sun."
+    ],
+    "watering_interval_days": 7
+  },
+  "snake plant": {
+    "light_preference": "low_to_medium",
+    "notes": [
+      "Allow soil to dry well between waterings."
+    ],
+    "watering_interval_days": 14
+  }
+}
+

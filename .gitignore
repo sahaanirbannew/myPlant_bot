@@ -3,5 +3,7 @@ __pycache__/
 .pycache/
 .pytest_cache/
 .env
-data/
+/data/
+!/my_plants/data/
+!/my_plants/data/**
 *.pyc

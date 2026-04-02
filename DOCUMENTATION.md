@@ -1,5 +1,10 @@
 # Deployment and Operations Guide
 
+This document now covers two systems in this repository:
+
+- the deployed Telegram webhook bot
+- the local deterministic `My Plants` backend under `my_plants/`
+
 ## Application behavior
 
 ### Use case 1.1: `/setup`
@@ -127,3 +132,67 @@ base64 < .env | tr -d '\n'
 ## Testing
 
 - Run `pytest` locally to validate the Telegram response formatting and background-processing behavior.
+- Run `pytest` locally to validate the deterministic `My Plants` watering scheduler, reminder flow, and profile conversation flow.
+
+## My Plants deterministic backend
+
+Location:
+
+- `my_plants/`
+
+Storage model:
+
+- `my_plants/data/plants.csv`
+- `my_plants/data/rooms.csv`
+- `my_plants/data/city_profiles.json`
+- `my_plants/events/events.csv`
+- `my_plants/memory/*.json`
+- `my_plants/raw_logs/*.log`
+
+Core deterministic components:
+
+- `FileManager`: creates directories and manages CSV, JSON, and text files
+- `PlantResolver`: matches plant names, creates new plants for `bought` or `got a`, or falls back to last used plant
+- `MemoryExtractor`: uses strict keyword matching for watering, fertilizing, issues, and room facts
+- `ConversationAgent`: collects watering frequency, soil type, and plant location in a deterministic multi-turn flow
+- `ContextBuilder`: loads plants, rooms, recent events, full plant event history, memory, plant requirements, and city profiles
+- `TimeSeriesAnalyzer`: computes watering intervals, last watering timestamp, days since watering, and frequent-watering patterns
+- `WateringScheduler`: calculates the effective watering interval using base requirements, room type, city profile, soil type, user history, and user-defined overrides
+- `DecisionEngine`: applies indoor, north-window, and overwatering rules
+- `ReminderAgent`: scans all plants for a user and groups due plants into friendly reminder messages
+- `ResponseGenerator`: returns a plain conversational response with recent activity, watering interval, and warnings
+- `Orchestrator`: coordinates the full end-to-end deterministic workflow
+
+Watering scheduler rules:
+
+- Base watering interval comes from `plant_requirements.json`
+- Room type adjusts the interval for `indoor`, `balcony`, and `outdoor` placements
+- City profile adjusts the interval using deterministic humidity and temperature bands
+- Soil type adjusts the interval using deterministic soil retention rules
+- If at least one recent watering history exists, the system computes average watering interval from the last five watering events and blends it with the adjusted base interval
+- If a user-defined watering frequency exists, it overrides all other interval logic
+- `days_since_last_watered` is computed from `events.csv`
+- A reminder becomes due when `days_since_last_watered >= watering_interval`
+
+Reminder and conversation behavior:
+
+- Users can ask reminder-style questions such as which plants are due for watering
+- Due plants are grouped into a single natural reminder response
+- New plants trigger a follow-up profile flow that asks for watering frequency, soil type, and plant location
+- The collected watering frequency is stored in user memory as a plant-specific override
+
+CLI:
+
+```bash
+python3 my_plants/main.py
+```
+
+ADK wrapper:
+
+- `my_plants/adk_agent.py`
+
+Important ADK constraint:
+
+- The wrapper is written to be ADK-compatible, but the official `google-adk` package was not installable in this local Python 3.9 environment.
+- The blocking issue was the current interpreter/runtime dependency stack, not the deterministic backend itself.
+- The deterministic core and CLI were fully tested locally with `pytest`.

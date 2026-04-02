@@ -1,0 +1,239 @@
+"""File system utilities for the My Plants backend."""
+
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+from typing import Any, Iterable
+
+
+PLANT_HEADERS = [
+    "id",
+    "user_id",
+    "name",
+    "species",
+    "room_id",
+    "position_in_room",
+    "soil_type",
+    "fertilizer_type",
+    "created_at",
+]
+
+ROOM_HEADERS = [
+    "id",
+    "user_id",
+    "name",
+    "type",
+    "window_direction",
+    "size_sqft",
+    "has_grow_light",
+    "city",
+]
+
+EVENT_HEADERS = [
+    "event_id",
+    "plant_id",
+    "event_type",
+    "subtype",
+    "value",
+    "metadata",
+    "timestamp",
+    "source",
+]
+
+DEFAULT_REQUIREMENTS = {
+    "generic": {
+        "watering_interval_days": 7,
+        "light_preference": "medium",
+        "notes": ["Check soil dryness before watering."],
+    },
+    "snake plant": {
+        "watering_interval_days": 14,
+        "light_preference": "low_to_medium",
+        "notes": ["Allow soil to dry well between waterings."],
+    },
+    "pothos": {
+        "watering_interval_days": 7,
+        "light_preference": "medium",
+        "notes": ["Keep out of harsh direct afternoon sun."],
+    },
+    "peace lily": {
+        "watering_interval_days": 5,
+        "light_preference": "low_to_medium",
+        "notes": ["This plant likes slightly more regular moisture."],
+    },
+}
+
+DEFAULT_CITY_PROFILES = {
+    "default": {
+        "humidity": "medium",
+        "temperature_band": "moderate",
+    },
+    "bangalore": {
+        "humidity": "medium",
+        "temperature_band": "moderate",
+    },
+    "chennai": {
+        "humidity": "high",
+        "temperature_band": "hot",
+    },
+    "delhi": {
+        "humidity": "low",
+        "temperature_band": "hot",
+    },
+    "mumbai": {
+        "humidity": "high",
+        "temperature_band": "warm",
+    },
+    "pune": {
+        "humidity": "medium",
+        "temperature_band": "warm",
+    },
+}
+
+
+class FileManager:
+    """Task: Manage directory creation and file IO for the My Plants backend.
+    Input: A base directory that contains the app script and all persistent folders.
+    Output: Convenience methods for CSV, JSON, and text file operations.
+    Failures: File permission errors or malformed content can raise OSError, csv.Error, or json.JSONDecodeError.
+    """
+
+    def __init__(self, base_dir: Path) -> None:
+        """Task: Initialize the file manager with paths relative to the script location.
+        Input: The base directory where the My Plants package lives.
+        Output: A ready-to-use FileManager instance with known file paths.
+        Failures: No failure is expected unless a non-path-like argument is supplied.
+        """
+
+        self.base_dir = base_dir
+        self.data_dir = base_dir / "data"
+        self.events_dir = base_dir / "events"
+        self.memory_dir = base_dir / "memory"
+        self.raw_logs_dir = base_dir / "raw_logs"
+        self.plants_csv_path = self.data_dir / "plants.csv"
+        self.rooms_csv_path = self.data_dir / "rooms.csv"
+        self.events_csv_path = self.events_dir / "events.csv"
+        self.requirements_json_path = self.data_dir / "plant_requirements.json"
+        self.city_profiles_json_path = self.data_dir / "city_profiles.json"
+
+    def ensure_workspace(self) -> None:
+        """Task: Create the required directory and seed-file structure when absent.
+        Input: No direct arguments; uses the configured base directory.
+        Output: Required folders and starter files exist on disk.
+        Failures: Raises OSError if directories or files cannot be created.
+        """
+
+        for directory in (self.data_dir, self.events_dir, self.memory_dir, self.raw_logs_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+
+        self._ensure_csv_file(self.plants_csv_path, PLANT_HEADERS)
+        self._ensure_csv_file(self.rooms_csv_path, ROOM_HEADERS)
+        self._ensure_csv_file(self.events_csv_path, EVENT_HEADERS)
+
+        if not self.requirements_json_path.exists():
+            self.write_json(self.requirements_json_path, DEFAULT_REQUIREMENTS)
+        if not self.city_profiles_json_path.exists():
+            self.write_json(self.city_profiles_json_path, DEFAULT_CITY_PROFILES)
+
+    def read_csv(self, path: Path) -> list[dict[str, str]]:
+        """Task: Read structured rows from a CSV file into dictionaries.
+        Input: The CSV file path to read.
+        Output: A list of row dictionaries keyed by the CSV header fields.
+        Failures: Raises OSError if the file cannot be opened or csv.Error if parsing fails.
+        """
+
+        if not path.exists():
+            return []
+        with path.open("r", newline="", encoding="utf-8") as csv_file:
+            reader = csv.DictReader(csv_file)
+            return [dict(row) for row in reader]
+
+    def write_csv(self, path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]) -> None:
+        """Task: Replace a CSV file with the provided rows using a strict header order.
+        Input: The target file path, iterable rows, and required header field names.
+        Output: A fully rewritten CSV file.
+        Failures: Raises OSError if the file is unwritable.
+        """
+
+        with path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key, "") for key in fieldnames})
+
+    def append_csv(self, path: Path, row: dict[str, Any], fieldnames: list[str]) -> None:
+        """Task: Append a single row to a CSV file, creating the header if needed.
+        Input: The target file path, a row dictionary, and the strict header field names.
+        Output: The new row appended to the CSV file.
+        Failures: Raises OSError if the file cannot be written.
+        """
+
+        file_exists = path.exists()
+        with path.open("a", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow({key: row.get(key, "") for key in fieldnames})
+
+    def read_json(self, path: Path, default: Any) -> Any:
+        """Task: Read JSON content or return a default value when the file is missing.
+        Input: The JSON path to read and a default fallback value.
+        Output: The decoded JSON object or the provided default.
+        Failures: Raises OSError or json.JSONDecodeError if the existing file is unreadable or malformed.
+        """
+
+        if not path.exists():
+            return default
+        with path.open("r", encoding="utf-8") as json_file:
+            return json.load(json_file)
+
+    def write_json(self, path: Path, payload: Any) -> None:
+        """Task: Persist JSON payloads using UTF-8 and readable formatting.
+        Input: The target JSON file path and the serializable payload.
+        Output: A JSON file written to disk.
+        Failures: Raises OSError if the file cannot be written or TypeError if the payload is not serializable.
+        """
+
+        with path.open("w", encoding="utf-8") as json_file:
+            json.dump(payload, json_file, indent=2, sort_keys=True)
+
+    def append_text(self, path: Path, content: str) -> None:
+        """Task: Append plain text to a log file.
+        Input: The target text file path and the text content to append.
+        Output: The content appended to the text file.
+        Failures: Raises OSError if the file cannot be written.
+        """
+
+        with path.open("a", encoding="utf-8") as text_file:
+            text_file.write(content)
+
+    def user_memory_path(self, user_id: str) -> Path:
+        """Task: Build the path to the per-user memory JSON file.
+        Input: The user identifier string.
+        Output: The full path to the memory file for that user.
+        Failures: No failure is expected unless the user_id is not serializable as a path fragment.
+        """
+
+        return self.memory_dir / f"{user_id}.json"
+
+    def raw_log_path(self, user_id: str) -> Path:
+        """Task: Build the path to the per-user raw log text file.
+        Input: The user identifier string.
+        Output: The full path to the raw log file for that user.
+        Failures: No failure is expected unless the user_id is not serializable as a path fragment.
+        """
+
+        return self.raw_logs_dir / f"{user_id}.log"
+
+    def _ensure_csv_file(self, path: Path, headers: list[str]) -> None:
+        """Task: Create a CSV file with headers if it does not already exist.
+        Input: The CSV file path and its strict header list.
+        Output: A header-only CSV file when the target did not exist.
+        Failures: Raises OSError if the file cannot be created.
+        """
+
+        if path.exists():
+            return
+        self.write_csv(path, [], headers)

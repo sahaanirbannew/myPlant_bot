@@ -2,6 +2,8 @@
 
 `myPlant_bot` is a FastAPI-based Telegram bot that stores a per-user Gemini API key, validates it during setup, and answers safe text questions in the background with Gemini `2.5-flash`.
 
+This repository also contains `my_plants`, a separate deterministic backend for a file-based plant care assistant called `My Plants`.
+
 ## Features
 
 - FastAPI webhook service for Telegram Bot API updates
@@ -12,6 +14,10 @@
 - Telegram replies are normalized to plain text by removing `**` bold markers from model output
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
+- Separate `my_plants/` deterministic backend using CSV, JSON, and text files only
+- Personalized watering scheduler that adapts to room type, city profile, soil type, user history, and user-defined frequency
+- Friendly reminder scanning that groups due plants into natural-sounding watering messages
+- Rule-based profile conversation flow that collects watering frequency, soil type, and plant location
 
 ## Project structure
 
@@ -23,6 +29,18 @@
 │   ├── main.py
 │   ├── models.py
 │   └── services/
+├── my_plants/
+│   ├── data/
+│   ├── events/
+│   ├── memory/
+│   ├── raw_logs/
+│   ├── adk_agent.py
+│   ├── conversation_agent.py
+│   ├── file_manager.py
+│   ├── main.py
+│   ├── orchestrator.py
+│   ├── reminder_agent.py
+│   └── watering_scheduler.py
 ├── scripts/ec2_setup.sh
 ├── systemd/myplant-bot.service
 ├── requirements.txt
@@ -62,6 +80,31 @@
    ```bash
    pytest
    ```
+
+## My Plants CLI
+
+Run the deterministic file-based plant assistant from the repository root:
+
+```bash
+python3 my_plants/main.py
+```
+
+What it does:
+
+- stores plant, room, and event data in local CSV files
+- seeds plant requirements and city profiles in local JSON files
+- stores user memory in JSON
+- stores raw message history in text logs
+- uses deterministic rule-based extraction only
+- performs no external API calls and no LLM inference
+- computes personalized watering intervals from plant requirements, room type, city profile, soil type, and recent watering history
+- honors user-defined watering frequency as the highest-priority interval override
+- asks follow-up profile questions for watering frequency, soil type, and plant location
+- scans all plants for due watering reminders and groups them into friendly responses
+
+## Google ADK note
+
+`my_plants/adk_agent.py` provides an ADK-compatible wrapper around the deterministic orchestrator. The official `google-adk` package could not be installed in this local environment because the current interpreter is Python 3.9 while ADK officially targets Python 3.10+, so the tested path here is the deterministic CLI and orchestration core.
 
 ## Telegram webhook flow
 

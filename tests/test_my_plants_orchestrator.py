@@ -1,0 +1,196 @@
+"""Tests for the deterministic My Plants backend."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+
+from my_plants.orchestrator import build_default_orchestrator
+
+
+def test_bought_message_creates_new_plant_and_files(tmp_path: Path) -> None:
+    """Task: Verify that a purchase-style message creates a plant row and starts profile collection.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify file-backed behavior.
+    Failures: Test fails if the plant row is not created or the follow-up question does not start.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    response = orchestrator.handle(
+        user_id="u1",
+        message="I bought a snake plant for the balcony.",
+        now=datetime(2026, 4, 2, 12, 0, 0),
+    )
+
+    plants_path = tmp_path / "data" / "plants.csv"
+    plants_csv = plants_path.read_text(encoding="utf-8")
+    assert "Snake" in plants_csv
+    assert "how often do you usually water snake plant" in response.lower()
+
+
+def test_profile_conversation_updates_override_soil_and_location(tmp_path: Path) -> None:
+    """Task: Verify that the conversation agent stores watering frequency, soil type, and location data.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify memory, plant, and room persistence.
+    Failures: Test fails if the conversation state or persisted fields are not updated.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    first_response = orchestrator.handle(
+        user_id="u1",
+        message="I bought a pothos.",
+        now=datetime(2026, 4, 2, 12, 0, 0),
+    )
+    second_response = orchestrator.handle(
+        user_id="u1",
+        message="every 4 days",
+        now=datetime(2026, 4, 2, 12, 1, 0),
+    )
+    third_response = orchestrator.handle(
+        user_id="u1",
+        message="cocopeat",
+        now=datetime(2026, 4, 2, 12, 2, 0),
+    )
+    final_response = orchestrator.handle(
+        user_id="u1",
+        message="indoors by the north window in Mumbai",
+        now=datetime(2026, 4, 2, 12, 3, 0),
+    )
+
+    memory_json = (tmp_path / "memory" / "u1.json").read_text(encoding="utf-8")
+    plants_csv = (tmp_path / "data" / "plants.csv").read_text(encoding="utf-8")
+    rooms_csv = (tmp_path / "data" / "rooms.csv").read_text(encoding="utf-8")
+
+    assert "how often do you usually water pothos" in first_response.lower()
+    assert "what soil type is pothos" in second_response.lower()
+    assert "where do you keep pothos" in third_response.lower()
+    assert "saved the watering profile for pothos" in final_response.lower()
+    assert '"user_defined_watering_interval_days": 4' in memory_json
+    assert "cocopeat" in plants_csv
+    assert "Mumbai" in rooms_csv
+    assert "north" in rooms_csv
+
+
+def test_last_used_plant_is_reused_for_follow_up_event(tmp_path: Path) -> None:
+    """Task: Verify that follow-up messages fall back to the last used plant when no name is present.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify event persistence and watering guidance.
+    Failures: Test fails if the watering event is not attached to the previously used plant.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    orchestrator.handle(
+        user_id="u1",
+        message="I bought a pothos.",
+        now=datetime(2026, 4, 2, 12, 0, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="every 4 days",
+        now=datetime(2026, 4, 2, 12, 1, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="potting mix",
+        now=datetime(2026, 4, 2, 12, 2, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="on the balcony in Bangalore",
+        now=datetime(2026, 4, 2, 12, 3, 0),
+    )
+    response = orchestrator.handle(
+        user_id="u1",
+        message="I watered it today.",
+        now=datetime(2026, 4, 3, 12, 0, 0),
+    )
+
+    events_csv = (tmp_path / "events" / "events.csv").read_text(encoding="utf-8")
+    assert "watering" in events_csv
+    assert "latest recorded activity was watering" in response.lower()
+    assert "current watering interval is 4.0 day(s)" in response.lower()
+
+
+def test_frequent_watering_warning_is_generated(tmp_path: Path) -> None:
+    """Task: Verify that frequent watering produces an overwatering warning.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify deterministic warning logic.
+    Failures: Test fails if the frequent-watering warning is not included in the response.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    orchestrator.handle(
+        user_id="u1",
+        message="I bought a peace lily indoors by the north window.",
+        now=datetime(2026, 4, 2, 9, 0, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="every 3 days",
+        now=datetime(2026, 4, 2, 9, 1, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="potting mix",
+        now=datetime(2026, 4, 2, 9, 2, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="indoors by the north window in Delhi",
+        now=datetime(2026, 4, 2, 9, 3, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="I watered Peace Lily.",
+        now=datetime(2026, 4, 2, 10, 0, 0),
+    )
+    response = orchestrator.handle(
+        user_id="u1",
+        message="I watered Peace Lily again.",
+        now=datetime(2026, 4, 3, 9, 0, 0),
+    )
+
+    assert "possible overwatering" in response.lower()
+    assert "north-facing window" in response.lower()
+    assert "indoor placement" in response.lower()
+
+
+def test_reminder_agent_groups_due_plants(tmp_path: Path) -> None:
+    """Task: Verify that the reminder agent groups due plants into one friendly response.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify grouped reminder text.
+    Failures: Test fails if multiple due plants are not included in the reminder message.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    for plant_name in ("Pothos", "Philodendron"):
+        orchestrator.handle(
+            user_id="u1",
+            message=f"I bought a {plant_name}.",
+            now=datetime(2026, 4, 1, 8, 0, 0),
+        )
+        orchestrator.handle(
+            user_id="u1",
+            message="every 2 days",
+            now=datetime(2026, 4, 1, 8, 1, 0),
+        )
+        orchestrator.handle(
+            user_id="u1",
+            message="potting mix",
+            now=datetime(2026, 4, 1, 8, 2, 0),
+        )
+        orchestrator.handle(
+            user_id="u1",
+            message="indoors in Bangalore",
+            now=datetime(2026, 4, 1, 8, 3, 0),
+        )
+        orchestrator.handle(
+            user_id="u1",
+            message=f"I watered {plant_name}.",
+            now=datetime(2026, 4, 1, 9, 0, 0),
+        )
+
+    reminder = orchestrator.scan_due_plants(user_id="u1", now=datetime(2026, 4, 5, 9, 0, 0))
+
+    assert "pothos" in reminder.lower()
+    assert "philodendron" in reminder.lower()
