@@ -133,7 +133,6 @@ class BotService:
             )
             return
 
-        await self.telegram_client.send_message(chat_id, "Processing your question in the background.")
         question_job = asyncio.create_task(
             self.gemini_client.ask_question(
                 api_key=session.gemini_api_key,
@@ -196,7 +195,7 @@ class BotService:
                 await asyncio.sleep(self.poll_interval_seconds)
 
             answer = await question_job
-            await self.telegram_client.send_message(chat_id, answer)
+            await self.telegram_client.send_message(chat_id, self._format_answer_for_telegram(answer))
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
@@ -231,4 +230,13 @@ class BotService:
 
         lowered_text = text.lower()
         return any(pattern in lowered_text for pattern in JAILBREAK_PATTERNS)
+
+    def _format_answer_for_telegram(self, answer: str) -> str:
+        """Task: Normalize model output so Telegram users receive plain text without bold markers.
+        Input: The raw text returned by the Gemini model.
+        Output: A sanitized Telegram-safe response string.
+        Failures: Unexpected non-string values can raise attribute errors before the text is sent.
+        """
+
+        return answer.replace("**", "").strip()
 

@@ -24,9 +24,10 @@
 
 1. Safe text questions are accepted.
 2. Gemini processing starts in the background.
-3. The bot checks completion every 5 seconds.
-4. Gemini retries up to 5 times with a 2-second delay between attempts.
-5. The final answer is sent back to Telegram when ready.
+3. The user does not receive a `Processing your question in the background.` status message.
+4. The bot checks completion every 5 seconds.
+5. Gemini retries up to 5 times with a 2-second delay between attempts.
+6. The final answer is sanitized for plain-text Telegram delivery by removing `**` markers before it is sent back.
 
 ### Use case 3.0: local memory
 
@@ -122,3 +123,7 @@ base64 < .env | tr -d '\n'
 - Run `/telegram/register-webhook` once after DNS and TLS are ready.
 - Verify `GET /health` returns `status=ok`.
 - Confirm `journalctl -u myplant-bot.service` shows successful startup after each deploy.
+
+## Testing
+
+- Run `pytest` locally to validate the Telegram response formatting and background-processing behavior.

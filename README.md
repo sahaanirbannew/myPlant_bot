@@ -8,7 +8,8 @@
 - `/setup` flow that asks for a Gemini API key, stores it in CSV, validates it, and retries on failure
 - In-memory per-user session cache that expires after 3 minutes of inactivity
 - Text-only request handling with simple jailbreak detection
-- Background Gemini question answering with 5 retries and 2-second backoff
+- Background Gemini question answering with 5 retries and 2-second backoff, without an interim status message
+- Telegram replies are normalized to plain text by removing `**` bold markers from model output
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 
@@ -54,6 +55,12 @@
 
    ```bash
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+6. Run the tests:
+
+   ```bash
+   pytest
    ```
 
 ## Telegram webhook flow
