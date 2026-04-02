@@ -11,6 +11,7 @@ from my_plants.context_builder import ContextBuilder
 from my_plants.conversation_agent import ConversationAgent
 from my_plants.decision_engine import DecisionEngine
 from my_plants.file_manager import EVENT_HEADERS, PLANT_HEADERS, ROOM_HEADERS, FileManager
+from my_plants.gemini_inference import GeminiInferenceClient
 from my_plants.memory_extractor import MemoryExtractor
 from my_plants.plant_resolver import PlantResolver
 from my_plants.reminder_agent import ReminderAgent
@@ -83,7 +84,7 @@ class Orchestrator:
 
         if resolution["needs_clarification"]:
             self._write_memory(user_id=user_id, payload={**user_memory, "updated_at": timestamp})
-            return "I could not determine which plant you mean yet. Mention the plant name or tell me you bought one."
+            return "I’m not quite sure which plant you mean yet. Tell me the plant name, or say you brought one home 🌿"
 
         plant = resolution["plant"]
         if resolution["created"]:
@@ -296,7 +297,7 @@ class Orchestrator:
         """
 
         if not events:
-            return "I have no recorded activity for this plant yet."
+            return "I don’t have any notes for this plant just yet."
 
         latest_event = events[-1]
         event_type = latest_event["event_type"]
@@ -304,9 +305,15 @@ class Orchestrator:
         timestamp = latest_event["timestamp"]
 
         if event_type == "issue" and subtype:
-            return f"The latest recorded issue was {subtype.replace('_', ' ')} on {timestamp}."
+            return f"Last time, I noticed {subtype.replace('_', ' ')} on {timestamp}."
 
-        return f"The latest recorded activity was {event_type} on {timestamp}."
+        event_labels = {
+            "watering": "you watered it",
+            "fertilizing": "you fed it",
+            "issue": "something felt a little off",
+        }
+        event_label = event_labels.get(event_type, event_type.replace("_", " "))
+        return f"Last time, {event_label} on {timestamp}."
 
     def _is_reminder_query(self, message: str) -> bool:
         """Task: Determine whether a message is asking for watering reminders or due plants.
@@ -329,6 +336,7 @@ def build_default_orchestrator(base_dir: Path | None = None) -> Orchestrator:
 
     script_dir = base_dir or Path(__file__).resolve().parent
     file_manager = FileManager(script_dir)
+    gemini_client = GeminiInferenceClient()
     return Orchestrator(
         file_manager=file_manager,
         plant_resolver=PlantResolver(),
@@ -338,6 +346,6 @@ def build_default_orchestrator(base_dir: Path | None = None) -> Orchestrator:
         time_series_analyzer=TimeSeriesAnalyzer(),
         watering_scheduler=WateringScheduler(),
         decision_engine=DecisionEngine(),
-        reminder_agent=ReminderAgent(),
-        response_generator=ResponseGenerator(),
+        reminder_agent=ReminderAgent(gemini_client=gemini_client),
+        response_generator=ResponseGenerator(gemini_client=gemini_client),
     )

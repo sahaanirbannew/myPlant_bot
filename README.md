@@ -2,7 +2,7 @@
 
 `myPlant_bot` is a FastAPI-based Telegram bot that stores a per-user Gemini API key, validates it during setup, and answers safe text questions in the background with Gemini `2.5-flash`.
 
-This repository also contains `my_plants`, a separate deterministic backend for a file-based plant care assistant called `My Plants`.
+This repository also contains `my_plants`, a file-based plant care assistant called `My Plants` that keeps plant state locally and can use Gemini for conversational inference.
 
 ## Features
 
@@ -12,12 +12,14 @@ This repository also contains `my_plants`, a separate deterministic backend for 
 - Text-only request handling with simple jailbreak detection
 - Background Gemini question answering with 5 retries and 2-second backoff, without an interim status message
 - Telegram replies are normalized to plain text by removing `**` bold markers from model output
+- Unauthenticated `/dashboard` page for Telegram traces, agent inputs, agent outputs, info logs, and errors
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
-- Separate `my_plants/` deterministic backend using CSV, JSON, and text files only
+- Separate `my_plants/` file-backed backend using CSV, JSON, and text files only
 - Personalized watering scheduler that adapts to room type, city profile, soil type, user history, and user-defined frequency
 - Friendly reminder scanning that groups due plants into natural-sounding watering messages
 - Rule-based profile conversation flow that collects watering frequency, soil type, and plant location
+- Warm "My Plants" companion persona, with Gemini handling the conversational phrasing and inference layer when configured
 
 ## Project structure
 
@@ -83,7 +85,7 @@ This repository also contains `my_plants`, a separate deterministic backend for 
 
 ## My Plants CLI
 
-Run the deterministic file-based plant assistant from the repository root:
+Run the file-based plant assistant from the repository root:
 
 ```bash
 python3 my_plants/main.py
@@ -95,12 +97,19 @@ What it does:
 - seeds plant requirements and city profiles in local JSON files
 - stores user memory in JSON
 - stores raw message history in text logs
-- uses deterministic rule-based extraction only
-- performs no external API calls and no LLM inference
+- uses deterministic rule-based extraction for plant facts, watering logic, and reminders
+- can use Gemini for conversational inference and final response phrasing when `MY_PLANTS_GEMINI_API_KEY` or `GEMINI_API_KEY` is set
 - computes personalized watering intervals from plant requirements, room type, city profile, soil type, and recent watering history
 - honors user-defined watering frequency as the highest-priority interval override
 - asks follow-up profile questions for watering frequency, soil type, and plant location
 - scans all plants for due watering reminders and groups them into friendly responses
+- replies in a warm, calm, slightly playful "My Plants" voice, with a local fallback if Gemini is unavailable
+
+Optional My Plants environment:
+
+- `MY_PLANTS_GEMINI_API_KEY`: Gemini API key for plant-care response inference
+- `MY_PLANTS_GEMINI_MODEL`: optional override, defaults to `gemini-2.5-flash`
+- `MY_PLANTS_GEMINI_API_BASE_URL`: optional override for the Gemini API base URL
 
 ## Google ADK note
 
@@ -111,6 +120,20 @@ What it does:
 - `POST /telegram/webhook` receives Telegram updates.
 - `POST /telegram/register-webhook` registers the webhook URL defined by `APP_BASE_URL`.
 - `GET /health` returns a simple readiness payload.
+- `GET /dashboard` renders recent Telegram request traces without authorization.
+
+## Dashboard logging
+
+The dashboard groups each Telegram request into one trace and shows:
+
+- the incoming Telegram text
+- which agent or processing step ran
+- the input each step received
+- the output each step produced
+- info and error events
+- the final reply sent back to Telegram
+
+Trace data is stored locally in `data/telegram_agent_traces.jsonl`.
 
 ## Production TLS note
 

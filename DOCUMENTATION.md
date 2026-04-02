@@ -133,8 +133,45 @@ base64 < .env | tr -d '\n'
 
 - Run `pytest` locally to validate the Telegram response formatting and background-processing behavior.
 - Run `pytest` locally to validate the deterministic `My Plants` watering scheduler, reminder flow, and profile conversation flow.
+- Run `pytest` locally to validate dashboard trace logging and `/dashboard` rendering.
 
-## My Plants deterministic backend
+## Telegram request dashboard
+
+Route:
+
+- `GET /dashboard`
+
+Current behavior:
+
+- No authorization is required right now.
+- The page renders recent Telegram request traces from the moment a user message arrives until the bot sends the final reply.
+- Each trace includes:
+  - incoming Telegram text
+  - which agent or processing step ran
+  - the input that step received
+  - the output that step produced
+  - info events
+  - error events
+
+Storage:
+
+- Trace events are stored in `data/telegram_agent_traces.jsonl`.
+- Sensitive Gemini API keys are masked before they are written to trace logs.
+
+Logged agents and stages currently include:
+
+- `telegram_input_agent`
+- `session_agent`
+- `setup_agent`
+- `gemini_validation_agent`
+- `safety_agent`
+- `queue_agent`
+- `gemini_agent`
+- `telegram_output_agent`
+- `delivery_agent`
+- `bot_service`
+
+## My Plants file-backed backend
 
 Location:
 
@@ -159,8 +196,9 @@ Core deterministic components:
 - `TimeSeriesAnalyzer`: computes watering intervals, last watering timestamp, days since watering, and frequent-watering patterns
 - `WateringScheduler`: calculates the effective watering interval using base requirements, room type, city profile, soil type, user history, and user-defined overrides
 - `DecisionEngine`: applies indoor, north-window, and overwatering rules
-- `ReminderAgent`: scans all plants for a user and groups due plants into friendly reminder messages
-- `ResponseGenerator`: returns a plain conversational response with recent activity, watering interval, and warnings
+- `ReminderAgent`: scans all plants for a user and groups due plants into warm, nudge-style reminder messages
+- `GeminiInferenceClient`: calls Gemini to turn structured plant context into natural replies and reminders when configured
+- `ResponseGenerator`: uses Gemini for plant-care phrasing and contextual inference, with a local fallback if Gemini is unavailable
 - `Orchestrator`: coordinates the full end-to-end deterministic workflow
 
 Watering scheduler rules:
@@ -180,6 +218,13 @@ Reminder and conversation behavior:
 - Due plants are grouped into a single natural reminder response
 - New plants trigger a follow-up profile flow that asks for watering frequency, soil type, and plant location
 - The collected watering frequency is stored in user memory as a plant-specific override
+- Final replies can use Gemini for contextual inference and the "My Plants" companion voice
+
+My Plants Gemini environment:
+
+- `MY_PLANTS_GEMINI_API_KEY`: Gemini API key for the My Plants response and reminder layers
+- `MY_PLANTS_GEMINI_MODEL`: optional model override, defaults to `gemini-2.5-flash`
+- `MY_PLANTS_GEMINI_API_BASE_URL`: optional API base URL override
 
 CLI:
 

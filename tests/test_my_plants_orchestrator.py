@@ -107,8 +107,11 @@ def test_last_used_plant_is_reused_for_follow_up_event(tmp_path: Path) -> None:
 
     events_csv = (tmp_path / "events" / "events.csv").read_text(encoding="utf-8")
     assert "watering" in events_csv
-    assert "latest recorded activity was watering" in response.lower()
-    assert "current watering interval is 4.0 day(s)" in response.lower()
+    assert "pothos" in response.lower()
+    assert "last time, you watered it" in response.lower()
+    assert "around every 4.0 day(s)" in response.lower()
+    assert "guidance:" not in response.lower()
+    assert "warning:" not in response.lower()
 
 
 def test_frequent_watering_warning_is_generated(tmp_path: Path) -> None:
@@ -151,8 +154,9 @@ def test_frequent_watering_warning_is_generated(tmp_path: Path) -> None:
     )
 
     assert "possible overwatering" in response.lower()
-    assert "north-facing window" in response.lower()
-    assert "indoor placement" in response.lower()
+    assert "north-facing" in response.lower()
+    assert "indoors" in response.lower()
+    assert "one thing i’m noticing" in response.lower() or "one thing i'm noticing" in response.lower()
 
 
 def test_reminder_agent_groups_due_plants(tmp_path: Path) -> None:
@@ -194,3 +198,49 @@ def test_reminder_agent_groups_due_plants(tmp_path: Path) -> None:
 
     assert "pothos" in reminder.lower()
     assert "philodendron" in reminder.lower()
+    assert "might be ready for some water" in reminder.lower() or "due for a drink" in reminder.lower() or "ready for watering" in reminder.lower()
+
+
+def test_response_generator_uses_warm_persona_voice(tmp_path: Path) -> None:
+    """Task: Verify that deterministic care replies follow the warmer My Plants persona style.
+    Input: A pytest temporary directory used as the backend base path.
+    Output: None; assertions verify the friendly tone and gentle reminder phrasing.
+    Failures: Test fails if the response falls back to robotic status-report wording.
+    """
+
+    orchestrator = build_default_orchestrator(base_dir=tmp_path)
+    orchestrator.handle(
+        user_id="u1",
+        message="I bought a pothos.",
+        now=datetime(2026, 4, 1, 8, 0, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="every 2 days",
+        now=datetime(2026, 4, 1, 8, 1, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="potting mix",
+        now=datetime(2026, 4, 1, 8, 2, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="indoors by the north window in Mumbai",
+        now=datetime(2026, 4, 1, 8, 3, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="I watered pothos.",
+        now=datetime(2026, 4, 1, 9, 0, 0),
+    )
+    response = orchestrator.handle(
+        user_id="u1",
+        message="How is pothos doing?",
+        now=datetime(2026, 4, 4, 8, 0, 0),
+    )
+
+    assert "pothos" in response.lower()
+    assert "might be ready for some water today" in response.lower()
+    assert "little note for pothos" in response.lower()
+    assert "north-facing light" in response.lower()

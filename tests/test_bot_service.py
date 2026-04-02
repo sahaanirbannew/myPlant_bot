@@ -7,10 +7,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
 
+import app.main
 from app.services.bot import BotService
 from app.services.session import SessionManager
 from app.services.storage import UserKeyStore
+from app.services.trace_logger import TraceLogger
 
 
 class FakeTelegramClient:
@@ -132,6 +135,94 @@ async def test_watch_question_job_removes_bold_markers(tmp_path: Path) -> None:
     )
 
     question_job: asyncio.Task[str] = asyncio.create_task(asyncio.sleep(0, result="**Bold** answer"))
-    await bot_service._watch_question_job(user_id=98765, chat_id=12345, question_job=question_job)
+    await bot_service._watch_question_job(
+        trace_id="trace_test",
+        user_id=98765,
+        chat_id=12345,
+        telegram_text="bold prompt",
+        question_job=question_job,
+    )
 
     assert telegram_client.sent_messages == [(12345, "Bold answer")]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_writes_dashboard_trace(tmp_path: Path) -> None:
+    """Task: Verify that one Telegram request produces grouped dashboard trace events.
+    Input: A temporary filesystem path provided by pytest for CSV and trace storage.
+    Output: None; assertions confirm agent inputs, outputs, and final reply are logged.
+    Failures: Test fails if the request flow is not captured in the trace log.
+    """
+
+    key_store = UserKeyStore(tmp_path / "keys.csv")
+    key_store.ensure_store_exists()
+    session_manager = SessionManager(key_store=key_store, timeout_seconds=180)
+    await session_manager.update_api_key(user_id=98765, gemini_api_key="valid-key")
+
+    trace_logger = TraceLogger(tmp_path / "traces.jsonl")
+    telegram_client = FakeTelegramClient()
+    gemini_client = FakeGeminiClient(answer="plain answer")
+    bot_service = BotService(
+        telegram_client=telegram_client,
+        gemini_client=gemini_client,
+        session_manager=session_manager,
+        key_store=key_store,
+        poll_interval_seconds=0,
+        trace_logger=trace_logger,
+    )
+
+    await bot_service.handle_message(build_message("What is the weather?"))
+    await bot_service.monitor_tasks[98765]
+
+    traces = trace_logger.read_recent_traces(limit=5)
+    assert len(traces) == 1
+    trace = traces[0]
+    agents = [event["agent"] for event in trace["events"]]
+    assert "telegram_input_agent" in agents
+    assert "session_agent" in agents
+    assert "gemini_agent" in agents
+    assert "telegram_output_agent" in agents
+    assert trace["telegram_text"] == "What is the weather?"
+    assert trace["final_output"] == "plain answer"
+
+
+def test_dashboard_route_renders_logged_trace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Task: Verify that the `/dashboard` page renders recent trace data without authorization.
+    Input: A temporary filesystem path provided by pytest and a monkeypatched trace logger.
+    Output: None; assertions confirm the HTML includes logged trace content.
+    Failures: Test fails if the dashboard route cannot render the trace log page.
+    """
+
+    trace_logger = TraceLogger(tmp_path / "dashboard_traces.jsonl")
+    trace_logger.log_event(
+        trace_id="trace_1",
+        level="info",
+        agent="telegram_input_agent",
+        message="Received Telegram message.",
+        user_id=1,
+        chat_id=2,
+        telegram_text="Hello plant",
+        agent_input={"text": "Hello plant"},
+        agent_output="Webhook payload accepted.",
+    )
+    trace_logger.log_event(
+        trace_id="trace_1",
+        level="info",
+        agent="telegram_output_agent",
+        message="Delivered final Gemini answer to Telegram.",
+        user_id=1,
+        chat_id=2,
+        telegram_text="Hello plant",
+        agent_input={"chat_id": 2},
+        agent_output="Hello back 🌿",
+    )
+
+    monkeypatch.setattr(app.main, "trace_logger", trace_logger)
+    client = TestClient(app.main.app)
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert "myPlant Dashboard" in response.text
+    assert "Hello plant" in response.text
+    assert "telegram_input_agent" in response.text
+    assert "Hello back 🌿" in response.text

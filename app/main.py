@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.config import load_settings
 from app.models import TelegramUpdate
@@ -14,6 +15,7 @@ from app.services.gemini import GeminiClient
 from app.services.session import SessionManager
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
+from app.services.trace_logger import TraceLogger
 
 
 settings = load_settings()
@@ -21,12 +23,14 @@ key_store = UserKeyStore(settings.user_keys_csv_path)
 session_manager = SessionManager(key_store=key_store, timeout_seconds=settings.session_timeout_seconds)
 telegram_client = TelegramClient(bot_token=settings.telegram_bot_token)
 gemini_client = GeminiClient(settings=settings)
+trace_logger = TraceLogger(Path("data/telegram_agent_traces.jsonl"))
 bot_service = BotService(
     telegram_client=telegram_client,
     gemini_client=gemini_client,
     session_manager=session_manager,
     key_store=key_store,
     poll_interval_seconds=settings.poll_interval_seconds,
+    trace_logger=trace_logger,
 )
 
 
@@ -38,9 +42,12 @@ async def lifespan(_: FastAPI):
     Failures: Startup storage or task scheduling errors can prevent the app from booting.
     """
 
-    await bot_service.start()
-    yield
-    await bot_service.stop()
+    try:
+        trace_logger.ensure_store_exists()
+        await bot_service.start()
+        yield
+    finally:
+        await bot_service.stop()
 
 
 app = FastAPI(
@@ -58,11 +65,36 @@ async def healthcheck() -> dict:
     Failures: No failure is expected unless process-level configuration is corrupted.
     """
 
-    return {
-        "status": "ok",
-        "environment": settings.app_env,
-        "telegram_configured": bool(settings.telegram_bot_token),
-    }
+    try:
+        return {
+            "status": "ok",
+            "environment": settings.app_env,
+            "telegram_configured": bool(settings.telegram_bot_token),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "error",
+            "environment": settings.app_env,
+            "telegram_configured": bool(settings.telegram_bot_token),
+            "error": str(exc),
+        }
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard() -> HTMLResponse:
+    """Task: Render an unauthenticated dashboard showing recent Telegram request traces.
+    Input: No request body; reads the persisted trace log from disk.
+    Output: An HTML page containing grouped agent logs, inputs, outputs, info events, and errors.
+    Failures: Trace read or render errors return a simple HTML error page instead of crashing the app.
+    """
+
+    try:
+        return HTMLResponse(content=trace_logger.render_dashboard_html(limit=40))
+    except Exception as exc:  # noqa: BLE001
+        return HTMLResponse(
+            content=f"<html><body><h1>Dashboard Error</h1><pre>{exc}</pre></body></html>",
+            status_code=500,
+        )
 
 
 @app.post("/telegram/webhook")
@@ -73,9 +105,12 @@ async def telegram_webhook(update: TelegramUpdate) -> JSONResponse:
     Failures: Unsupported or malformed payloads are ignored gracefully, but downstream sends can fail.
     """
 
-    if update.message is not None:
-        await bot_service.handle_message(update.message)
-    return JSONResponse(content={"ok": True})
+    try:
+        if update.message is not None:
+            await bot_service.handle_message(update.message)
+        return JSONResponse(content={"ok": True})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(content={"ok": False, "error": str(exc)}, status_code=500)
 
 
 @app.post("/telegram/register-webhook")
@@ -86,6 +121,8 @@ async def register_webhook() -> JSONResponse:
     Failures: Telegram API failures surface as FastAPI server errors if the request cannot be completed.
     """
 
-    webhook_response = await bot_service.register_webhook(app_base_url=settings.app_base_url)
-    return JSONResponse(content=webhook_response)
-
+    try:
+        webhook_response = await bot_service.register_webhook(app_base_url=settings.app_base_url)
+        return JSONResponse(content=webhook_response)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(content={"ok": False, "error": str(exc)}, status_code=500)
