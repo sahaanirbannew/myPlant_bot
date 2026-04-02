@@ -57,6 +57,8 @@ class TraceLogger:
         telegram_text: str | None = None,
         agent_input: Any | None = None,
         agent_output: Any | None = None,
+        file_path: str | None = None,
+        persisted_data: Any | None = None,
         error: str | None = None,
     ) -> None:
         """Task: Append a single structured event to the trace log.
@@ -77,6 +79,8 @@ class TraceLogger:
             "telegram_text": telegram_text,
             "agent_input": agent_input,
             "agent_output": agent_output,
+            "file_path": file_path,
+            "persisted_data": persisted_data,
             "error": error,
         }
         with self.log_path.open("a", encoding="utf-8") as log_file:
@@ -273,6 +277,8 @@ class TraceLogger:
                 <th>Message</th>
                 <th>Input</th>
                 <th>Output / Error</th>
+                <th>Saved File</th>
+                <th>Saved Data</th>
               </tr>
             </thead>
             <tbody>
@@ -294,6 +300,8 @@ class TraceLogger:
         input_text = html.escape(self._stringify_payload(event.get("agent_input")))
         output_or_error = event.get("error") or self._stringify_payload(event.get("agent_output"))
         output_text = html.escape(output_or_error)
+        file_path = html.escape(event.get("file_path") or "")
+        persisted_data = html.escape(self._stringify_payload(event.get("persisted_data")))
         return f"""
         <tr>
           <td><code>{html.escape(event.get('timestamp', ''))}</code></td>
@@ -302,6 +310,8 @@ class TraceLogger:
           <td>{html.escape(event.get('message', ''))}</td>
           <td>{input_text}</td>
           <td>{output_text}</td>
+          <td>{file_path}</td>
+          <td>{persisted_data}</td>
         </tr>
         """
 

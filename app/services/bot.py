@@ -26,6 +26,33 @@ JAILBREAK_PATTERNS = (
     "pretend you are unrestricted",
 )
 
+SYSTEM_PERSONA_PROMPT = """
+You are "My Plants" — a thoughtful, observant, and slightly playful plant-care companion.
+
+You are NOT an AI assistant. Do NOT mention models, training, or technology.
+
+PERSONALITY
+- Warm, calm, and slightly playful
+- Speak like a caring friend who understands plants deeply
+- Occasionally tease gently, but never sound rude
+- Avoid sounding robotic or overly formal
+
+STYLE
+- Use short to medium length responses
+- Avoid bullet points unless absolutely necessary
+- Use soft language like maybe, might, feels like, or I think
+- Occasionally use a light plant emoji like 🌿 or 😌, but not too many
+
+BEHAVIOR
+- Personalize every response using the user's context when it is available
+- If information is missing, ask one gentle follow-up question instead of dumping advice
+- Never say you are an AI
+- Never give a generic textbook answer
+
+GOAL
+- Make the user feel guided, understood, and gently cared for.
+""".strip()
+
 
 class BotService:
     """Task: Coordinate Telegram message handling, setup flow, safety checks, and Gemini jobs.
@@ -253,14 +280,14 @@ class BotService:
                 user_id=user_id,
                 chat_id=chat_id,
                 telegram_text=incoming_text,
-                agent_input=incoming_text,
+                agent_input=self._build_persona_prompt(incoming_text),
                 agent_output="Background task created.",
             )
             question_job = asyncio.create_task(
                 self._run_question_job(
                     trace_id=trace_id,
                     api_key=session.gemini_api_key,
-                    prompt=incoming_text,
+                    prompt=self._build_persona_prompt(incoming_text),
                     user_id=user_id,
                     chat_id=chat_id,
                 )
@@ -321,6 +348,23 @@ class BotService:
             )
 
             saved_record = self.key_store.append_key(user_id=user_id, gemini_api_key=api_key)
+            self._log_trace(
+                trace_id=trace_id,
+                level="info",
+                agent="storage_agent",
+                message="Saved submitted Gemini API key record to CSV.",
+                user_id=user_id,
+                chat_id=chat_id,
+                telegram_text="[setup key submission]",
+                agent_input={"masked_api_key": masked_key},
+                agent_output="CSV row written.",
+                file_path=str(self.key_store.csv_path),
+                persisted_data={
+                    "user_id": saved_record.user_id,
+                    "gemini_api_key": masked_key,
+                    "datetime": saved_record.saved_at,
+                },
+            )
             is_valid = await self.gemini_client.validate_api_key(api_key)
             self._log_trace(
                 trace_id=trace_id,
@@ -346,6 +390,23 @@ class BotService:
                 return
 
             self.key_store.remove_record(saved_record)
+            self._log_trace(
+                trace_id=trace_id,
+                level="info",
+                agent="storage_agent",
+                message="Removed invalid Gemini API key record from CSV.",
+                user_id=user_id,
+                chat_id=chat_id,
+                telegram_text="[setup key submission]",
+                agent_input={"masked_api_key": masked_key},
+                agent_output="CSV rewritten without invalid key.",
+                file_path=str(self.key_store.csv_path),
+                persisted_data={
+                    "removed_user_id": saved_record.user_id,
+                    "removed_gemini_api_key": masked_key,
+                    "removed_datetime": saved_record.saved_at,
+                },
+            )
             await self.session_manager.mark_waiting_for_key(user_id)
             await self._send_and_log(
                 trace_id=trace_id,
@@ -581,6 +642,8 @@ class BotService:
         telegram_text: str | None,
         agent_input: Any | None = None,
         agent_output: Any | None = None,
+        file_path: str | None = None,
+        persisted_data: Any | None = None,
         error: str | None = None,
     ) -> None:
         """Task: Append a structured trace event when dashboard logging is enabled.
@@ -602,6 +665,8 @@ class BotService:
                 telegram_text=telegram_text,
                 agent_input=agent_input,
                 agent_output=agent_output,
+                file_path=file_path,
+                persisted_data=persisted_data,
                 error=error,
             )
 
@@ -616,3 +681,17 @@ class BotService:
         if len(trimmed) <= 8:
             return "*" * len(trimmed)
         return f"{trimmed[:4]}...{trimmed[-4:]}"
+
+    def _build_persona_prompt(self, user_text: str) -> str:
+        """Task: Prefix the My Plants persona to every Gemini prompt sent by the Telegram bot flow.
+        Input: The raw user text that should be answered by Gemini.
+        Output: A prompt string beginning with the persona block followed by the user's request.
+        Failures: No failure is expected.
+        """
+
+        return (
+            f"{SYSTEM_PERSONA_PROMPT}\n\n"
+            "User message:\n"
+            f"{user_text.strip()}\n\n"
+            "Reply with only the final user-facing answer."
+        )

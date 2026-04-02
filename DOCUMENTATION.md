@@ -150,6 +150,9 @@ Current behavior:
   - which agent or processing step ran
   - the input that step received
   - the output that step produced
+  - which data was saved
+  - which file received that data
+  - which agent handled the save
   - info events
   - error events
 
@@ -170,6 +173,12 @@ Logged agents and stages currently include:
 - `telegram_output_agent`
 - `delivery_agent`
 - `bot_service`
+- `storage_agent`
+
+Current saved-file visibility:
+
+- Gemini API key submissions and removals are shown with the target CSV path and masked saved payload.
+- Keys are masked before dashboard logging so the page does not expose the raw secret.
 
 ## My Plants file-backed backend
 
@@ -225,6 +234,11 @@ My Plants Gemini environment:
 - `MY_PLANTS_GEMINI_API_KEY`: Gemini API key for the My Plants response and reminder layers
 - `MY_PLANTS_GEMINI_MODEL`: optional model override, defaults to `gemini-2.5-flash`
 - `MY_PLANTS_GEMINI_API_BASE_URL`: optional API base URL override
+
+Prompt behavior:
+
+- The My Plants persona block is placed at the start of every Gemini prompt used by the Telegram bot question flow.
+- The same persona block is also placed at the start of Gemini prompts used by the My Plants response and reminder layers.
 
 CLI:
 

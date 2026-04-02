@@ -111,6 +111,9 @@ async def test_handle_message_skips_processing_notice(tmp_path: Path) -> None:
     await bot_service.monitor_tasks[98765]
 
     assert telegram_client.sent_messages == [(12345, "plain answer")]
+    assert gemini_client.prompts
+    assert gemini_client.prompts[0].startswith('You are "My Plants"')
+    assert "User message:\nWhat is the weather?" in gemini_client.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -215,6 +218,8 @@ def test_dashboard_route_renders_logged_trace(tmp_path: Path, monkeypatch: pytes
         telegram_text="Hello plant",
         agent_input={"chat_id": 2},
         agent_output="Hello back 🌿",
+        file_path="data/user_gemini_keys.csv",
+        persisted_data={"user_id": 1, "gemini_api_key": "abcd...wxyz"},
     )
 
     monkeypatch.setattr(app.main, "trace_logger", trace_logger)
@@ -226,3 +231,5 @@ def test_dashboard_route_renders_logged_trace(tmp_path: Path, monkeypatch: pytes
     assert "Hello plant" in response.text
     assert "telegram_input_agent" in response.text
     assert "Hello back 🌿" in response.text
+    assert "data/user_gemini_keys.csv" in response.text
+    assert "abcd...wxyz" in response.text

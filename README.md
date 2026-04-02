@@ -130,10 +130,18 @@ The dashboard groups each Telegram request into one trace and shows:
 - which agent or processing step ran
 - the input each step received
 - the output each step produced
+- which data was saved
+- which file it was saved to
+- which agent handled that save
 - info and error events
 - the final reply sent back to Telegram
 
 Trace data is stored locally in `data/telegram_agent_traces.jsonl`.
+
+Gemini prompt behavior:
+
+- The Telegram bot now prefixes the My Plants persona at the start of every Gemini question prompt.
+- The `my_plants` response and reminder layers also begin Gemini prompts with the same persona block.
 
 ## Production TLS note
 
