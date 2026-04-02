@@ -350,12 +350,6 @@ class BotService:
                 )
                 return
 
-            setup_summary = ""
-            follow_up_question = ""
-            if self.plant_setup_store is not None:
-                setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
-                follow_up_question = setup_clarification_question or self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
-
             history_text = "No prior context."
             if self.plant_setup_store and self.plant_setup_store.file_manager:
                 try:
@@ -364,6 +358,13 @@ class BotService:
                         history_text = "\n".join(f"{h['role'].capitalize()}: {h['message']}" for h in history[-10:])
                 except Exception:
                     pass
+
+            setup_summary = ""
+            follow_up_question = ""
+            if self.plant_setup_store is not None:
+                discussion_context = f"{history_text}\nUser: {incoming_text}"
+                setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id, discussion_context=discussion_context)
+                follow_up_question = setup_clarification_question or self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
 
             gemini_prompt = self._build_persona_prompt(
                 user_text=incoming_text,

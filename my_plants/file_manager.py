@@ -141,6 +141,24 @@ class FileManager:
     def plant_ledger_path(self, user_id: str, plant_id: str) -> Path:
         return self.user_dir(user_id) / f"plant_{plant_id}_history.jsonl"
 
+    def plant_profile_path(self, user_id: str, plant_id: str) -> Path:
+        return self.user_dir(user_id) / f"plant_{plant_id}.md"
+
+    def write_plant_profile(self, user_id: str, plant_id: str, content: str) -> None:
+        """Task: Plonk all plant data into a dedicated distinct file."""
+        path = self.plant_profile_path(user_id, plant_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            f.write(content)
+
+    def read_plant_profile(self, user_id: str, plant_id: str) -> str:
+        """Task: Retrieve the standalone Markdown profile file of a specific plant."""
+        path = self.plant_profile_path(user_id, plant_id)
+        if not path.exists():
+            return ""
+        with path.open("r", encoding="utf-8") as f:
+            return f.read()
+
     def wipe_user_data(self, user_id: str) -> None:
         """Task: Recursively delete all local data mapped to this user identifier.
         Input: The Telegram user id.

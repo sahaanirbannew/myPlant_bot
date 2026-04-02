@@ -115,6 +115,20 @@ class PlantSetupStore:
                 timestamp=saved_at,
             )
             
+            room_row = next((r for r in rooms if r["id"] == plant_row["room_id"]), {})
+            md_profile = (
+                f"# Plant Profile: {plant_row['name']}\n\n"
+                f"- **Species**: {plant_row.get('species', 'Unknown')}\n"
+                f"- **Room Placed**: {room_row.get('name', 'Unknown')}\n"
+                f"- **Room Windows**: {room_row.get('windows', 'Unknown')}\n"
+                f"- **Room City**: {room_row.get('city', 'Unknown')}\n"
+                f"- **Has Grow Light?**: {room_row.get('has_grow_light', 'Unknown')}\n"
+                f"- **Exact Position in Room**: {plant_row.get('position_in_room', 'Unknown')}\n"
+                f"- **Soil Type**: {plant_row.get('soil_type', 'Unknown')}\n"
+                f"- **Fertilizer**: {plant_row.get('fertilizer_type', 'Unknown')}\n"
+            )
+            self.file_manager.write_plant_profile(user_key, plant_row["id"], md_profile)
+            
             self.file_manager.append_plant_ledger_entry(
                 user_id=user_key,
                 plant_id=plant_row["id"],
@@ -135,10 +149,10 @@ class PlantSetupStore:
         self.file_manager.write_csv(self.file_manager.plants_csv_path(user_key), plants, PLANT_HEADERS)
         return write_summaries
 
-    def build_user_setup_summary(self, user_id: int) -> str:
+    def build_user_setup_summary(self, user_id: int, discussion_context: str = "") -> str:
         """Task: Summarize the saved static setup context for one user for prompt injection.
-        Input: The Telegram user id whose plant and room setup should be summarized.
-        Output: A concise text summary of known plants and rooms, or a note that setup is missing.
+        Input: The Telegram user id and ongoing conversation text.
+        Output: A concise text summary plus full markdown profiles of any plants actively discussed.
         Failures: File IO issues can raise exceptions when reading CSV data.
         """
 
@@ -189,6 +203,22 @@ class PlantSetupStore:
                     )
                 )
             parts.append("Saved plants: " + " | ".join(plant_bits))
+
+        if discussion_context and plants:
+            context_lower = discussion_context.lower()
+            topic_profiles: list[str] = []
+            for plant in plants:
+                name = plant.get("name", "").lower()
+                species = plant.get("species", "").lower()
+                if (name and len(name) > 2 and name in context_lower) or (species and len(species) > 2 and species in context_lower):
+                    profile_content = self.file_manager.read_plant_profile(user_key, plant["id"])
+                    if profile_content:
+                        topic_profiles.append(profile_content)
+            
+            if topic_profiles:
+                parts.append("\n=== RELEVANT PLANT PROFILES FOR CURRENT DISCUSSION ===")
+                parts.extend(topic_profiles)
+                parts.append("====================================================")
 
         return "\n".join(parts)
 
