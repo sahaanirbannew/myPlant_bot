@@ -65,7 +65,7 @@ class Orchestrator:
         Failures: File IO and timestamp parsing issues can raise runtime exceptions.
         """
 
-        self.file_manager.ensure_workspace()
+        self.file_manager.ensure_user_workspace(user_id)
         timestamp = iso_now(now)
         self._log_raw_message(user_id=user_id, message=message, timestamp=timestamp)
 
@@ -73,7 +73,7 @@ class Orchestrator:
             return self.scan_due_plants(user_id=user_id, now=now)
 
         user_memory = self.file_manager.read_json(self.file_manager.user_memory_path(user_id), default={})
-        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path)
+        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id))
         resolution = self.plant_resolver.resolve(
             user_id=user_id,
             message=message,
@@ -89,9 +89,9 @@ class Orchestrator:
         plant = resolution["plant"]
         if resolution["created"]:
             plants.append(plant)
-            self.file_manager.write_csv(self.file_manager.plants_csv_path, plants, PLANT_HEADERS)
+            self.file_manager.write_csv(self.file_manager.plants_csv_path(user_id), plants, PLANT_HEADERS)
 
-        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path)
+        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_id))
         conversation_result = self.conversation_agent.handle_pending_question(
             user_id=user_id,
             plant=plant,
@@ -101,15 +101,15 @@ class Orchestrator:
             timestamp=timestamp,
         )
         if conversation_result.get("handled"):
-            self._persist_rooms(conversation_result.get("rooms", rooms))
-            self._persist_plant(conversation_result.get("plant", plant))
+            self._persist_rooms(user_id=user_id, rooms=conversation_result.get("rooms", rooms))
+            self._persist_plant(user_id=user_id, plant=conversation_result.get("plant", plant))
             self._write_memory(user_id=user_id, payload=conversation_result["memory"])
             return conversation_result["response"]
 
         extraction = self.memory_extractor.extract(message=message, timestamp=timestamp)
         plant = self._apply_room_facts(user_id=user_id, plant=plant, room_facts=extraction["room_facts"])
-        self._persist_plant(plant=plant)
-        self._persist_events(plant_id=plant["id"], extraction=extraction, timestamp=timestamp)
+        self._persist_plant(user_id=user_id, plant=plant)
+        self._persist_events(user_id=user_id, plant_id=plant["id"], extraction=extraction, timestamp=timestamp)
 
         memory_payload = {
             **user_memory,
@@ -148,9 +148,9 @@ class Orchestrator:
         Failures: File IO and parsing issues can raise runtime exceptions.
         """
 
-        self.file_manager.ensure_workspace()
+        self.file_manager.ensure_user_workspace(user_id)
         timestamp = iso_now(now)
-        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path) if row["user_id"] == user_id]
+        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id)) if row["user_id"] == user_id]
         due_payloads: list[dict[str, Any]] = []
         for plant in plants:
             context = self.context_builder.build(user_id=user_id, plant_id=plant["id"])
@@ -180,34 +180,35 @@ class Orchestrator:
             f"{timestamp} | {message}\n",
         )
 
-    def _persist_plant(self, plant: dict[str, str]) -> None:
+    def _persist_plant(self, user_id: str, plant: dict[str, str]) -> None:
         """Task: Upsert a plant row in the plants CSV file.
-        Input: The plant row dictionary to persist.
+        Input: The user ID and plant row dictionary to persist.
         Output: The plants CSV rewritten with the latest plant state.
         Failures: Raises OSError if the plants CSV cannot be written.
         """
 
-        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path)
+        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id))
         updated_plants = [plant if row["id"] == plant["id"] else row for row in plants]
         if not any(row["id"] == plant["id"] for row in plants):
             updated_plants.append(plant)
-        self.file_manager.write_csv(self.file_manager.plants_csv_path, updated_plants, PLANT_HEADERS)
+        self.file_manager.write_csv(self.file_manager.plants_csv_path(user_id), updated_plants, PLANT_HEADERS)
 
     def _persist_events(
         self,
+        user_id: str,
         plant_id: str,
         extraction: dict[str, list[dict[str, Any]]],
         timestamp: str,
     ) -> None:
         """Task: Append deterministic event rows produced by the extractor.
-        Input: The plant id, extraction payload, and current timestamp.
+        Input: The user id, plant id, extraction payload, and current timestamp.
         Output: Matching events appended to the events CSV file.
         Failures: Raises OSError if the events CSV cannot be written.
         """
 
         for event in extraction["time_series_events"]:
             self.file_manager.append_csv(
-                self.file_manager.events_csv_path,
+                self.file_manager.events_csv_path(user_id),
                 {
                     "event_id": make_id("event"),
                     "plant_id": plant_id,
@@ -221,14 +222,14 @@ class Orchestrator:
                 EVENT_HEADERS,
             )
 
-    def _persist_rooms(self, rooms: list[dict[str, str]]) -> None:
+    def _persist_rooms(self, user_id: str, rooms: list[dict[str, str]]) -> None:
         """Task: Persist the complete room list to the rooms CSV file.
-        Input: The room row dictionaries to write.
+        Input: The user ID and room row dictionaries to write.
         Output: The rooms CSV rewritten on disk.
         Failures: Raises OSError if the rooms CSV cannot be written.
         """
 
-        self.file_manager.write_csv(self.file_manager.rooms_csv_path, rooms, ROOM_HEADERS)
+        self.file_manager.write_csv(self.file_manager.rooms_csv_path(user_id), rooms, ROOM_HEADERS)
 
     def _apply_room_facts(
         self,
@@ -245,11 +246,11 @@ class Orchestrator:
         if not room_facts:
             return plant
 
-        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path)
+        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_id))
         latest_room_fact = room_facts[-1]
         room_name = latest_room_fact.get("name", "General Room")
         room_type = latest_room_fact.get("type", "")
-        window_direction = latest_room_fact.get("window_direction", "")
+        windows = latest_room_fact.get("windows", "")
 
         existing_room = next(
             (
@@ -266,7 +267,7 @@ class Orchestrator:
                 "user_id": user_id,
                 "name": room_name,
                 "type": room_type,
-                "window_direction": window_direction,
+                "windows": windows,
                 "size_sqft": "",
                 "has_grow_light": "false",
                 "city": "",
@@ -274,9 +275,9 @@ class Orchestrator:
             rooms.append(existing_room)
         else:
             existing_room["type"] = room_type or existing_room["type"]
-            existing_room["window_direction"] = window_direction or existing_room["window_direction"]
+            existing_room["windows"] = windows or existing_room.get("windows", "")
 
-        self.file_manager.write_csv(self.file_manager.rooms_csv_path, rooms, ROOM_HEADERS)
+        self.file_manager.write_csv(self.file_manager.rooms_csv_path(user_id), rooms, ROOM_HEADERS)
         plant["room_id"] = existing_room["id"]
         return plant
 

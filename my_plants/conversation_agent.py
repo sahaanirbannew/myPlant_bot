@@ -162,7 +162,7 @@ class ConversationAgent:
         questions = {
             "watering_frequency": f"How often do you usually water {plant_name}? Please answer in days, like 'every 5 days'.",
             "soil_type": f"What soil type is {plant_name} in? For example: cocopeat, potting mix, succulent mix, sandy soil, loamy soil, or clay soil.",
-            "plant_location": f"Where do you keep {plant_name}, and which city is it in? You can say something like 'indoors by the north window in Mumbai' or 'on the balcony in Bangalore'.",
+            "plant_location": f"Which room is {plant_name} in? (For example: Bedroom, Living Room, etc.)",
         }
         return questions[question_key]
 
@@ -176,7 +176,7 @@ class ConversationAgent:
         clarifications = {
             "watering_frequency": f"I still need the watering frequency for {plant_name} as a number of days, like 'every 7 days'.",
             "soil_type": f"I still need the soil type for {plant_name}. Try one of: cocopeat, potting mix, succulent mix, sandy soil, loamy soil, or clay soil.",
-            "plant_location": f"I still need the plant location for {plant_name}. Please mention indoor, balcony, or outdoor, and include the city if you can.",
+            "plant_location": f"I didn't get that. Which room is {plant_name} in? (For example: Bedroom, Living Room, or Balcony)",
         }
         return clarifications[question_key]
 
@@ -211,46 +211,28 @@ class ConversationAgent:
         return None
 
     def _parse_location(self, message: str) -> dict[str, str] | None:
-        """Task: Parse room type, window direction, and city from a location answer.
+        """Task: Parse room name and type from a location answer.
         Input: A free-form user message.
         Output: A location payload dictionary, or None when parsing fails.
         Failures: No failure is expected.
         """
 
-        lowered = message.lower()
-        room_type = ""
+        clean_message = message.strip()
+        lowered = clean_message.lower()
+        if not lowered:
+            return None
+
+        room_type = "indoor"
         if "balcony" in lowered:
             room_type = "balcony"
         elif "outdoor" in lowered:
             room_type = "outdoor"
-        elif "indoors" in lowered or "indoor" in lowered:
-            room_type = "indoor"
-
-        if not room_type:
-            return None
-
-        window_direction = ""
-        for direction in ("north", "south", "east", "west"):
-            if direction in lowered:
-                window_direction = direction
-                break
-
-        city = ""
-        for known_city in KNOWN_CITIES:
-            if known_city in lowered:
-                city = known_city.title()
-                break
-
-        room_name_parts = [room_type.capitalize()]
-        if window_direction:
-            room_name_parts.append(f"{window_direction.capitalize()} Window")
-        room_name = " ".join(room_name_parts)
 
         return {
-            "name": room_name,
+            "name": clean_message.title(),
             "type": room_type,
-            "window_direction": window_direction,
-            "city": city,
+            "windows": "",
+            "city": "",
         }
 
     def _upsert_room(
@@ -279,7 +261,7 @@ class ConversationAgent:
                 "user_id": user_id,
                 "name": location_payload["name"],
                 "type": location_payload["type"],
-                "window_direction": location_payload.get("window_direction", ""),
+                "windows": location_payload.get("windows", ""),
                 "size_sqft": "",
                 "has_grow_light": "false",
                 "city": location_payload.get("city", ""),
@@ -288,6 +270,6 @@ class ConversationAgent:
             return existing_room
 
         existing_room["type"] = location_payload["type"] or existing_room["type"]
-        existing_room["window_direction"] = location_payload.get("window_direction", "") or existing_room["window_direction"]
+        existing_room["windows"] = location_payload.get("windows", "") or existing_room.get("windows", "")
         existing_room["city"] = location_payload.get("city", "") or existing_room["city"]
         return existing_room

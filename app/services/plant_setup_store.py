@@ -55,11 +55,11 @@ class PlantSetupStore:
         Failures: Raises IO or value errors if persistence fails or required values are invalid.
         """
 
-        self.file_manager.ensure_workspace()
+        self.file_manager.ensure_user_workspace(user_id)
         saved_at = timestamp or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         user_key = str(user_id)
-        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path)
-        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path)
+        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_key))
+        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_key))
         write_summaries: list[dict[str, Any]] = []
 
         room_id_by_name: dict[str, str] = {}
@@ -69,7 +69,7 @@ class PlantSetupStore:
             write_summaries.append(
                 {
                     "agent": "setup_memory_agent",
-                    "file_path": str(self.file_manager.rooms_csv_path),
+                    "file_path": str(self.file_manager.rooms_csv_path(user_key)),
                     "saved_data": {**room_row, "write_mode": "updated" if was_updated else "created"},
                 }
             )
@@ -85,13 +85,13 @@ class PlantSetupStore:
             write_summaries.append(
                 {
                     "agent": "setup_memory_agent",
-                    "file_path": str(self.file_manager.plants_csv_path),
+                    "file_path": str(self.file_manager.plants_csv_path(user_key)),
                     "saved_data": {**plant_row, "write_mode": "updated" if was_updated else "created"},
                 }
             )
 
-        self.file_manager.write_csv(self.file_manager.rooms_csv_path, rooms, ROOM_HEADERS)
-        self.file_manager.write_csv(self.file_manager.plants_csv_path, plants, PLANT_HEADERS)
+        self.file_manager.write_csv(self.file_manager.rooms_csv_path(user_key), rooms, ROOM_HEADERS)
+        self.file_manager.write_csv(self.file_manager.plants_csv_path(user_key), plants, PLANT_HEADERS)
         return write_summaries
 
     def build_user_setup_summary(self, user_id: int) -> str:
@@ -101,10 +101,10 @@ class PlantSetupStore:
         Failures: File IO issues can raise exceptions when reading CSV data.
         """
 
-        self.file_manager.ensure_workspace()
+        self.file_manager.ensure_user_workspace(user_id)
         user_key = str(user_id)
-        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path) if row["user_id"] == user_key]
-        rooms = [row for row in self.file_manager.read_csv(self.file_manager.rooms_csv_path) if row["user_id"] == user_key]
+        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path(user_key)) if row["user_id"] == user_key]
+        rooms = [row for row in self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_key)) if row["user_id"] == user_key]
         room_map = {room["id"]: room for room in rooms}
 
         if not plants and not rooms:
@@ -120,7 +120,7 @@ class PlantSetupStore:
                         for bit in [
                             room.get("name", ""),
                             room.get("type", ""),
-                            f"{room.get('window_direction')} window" if room.get("window_direction") else "",
+                            f"windows: {room.get('windows')}" if room.get("windows") else "",
                             room.get("city", ""),
                             f"grow light={room.get('has_grow_light')}" if room.get("has_grow_light") else "",
                             f"size={room.get('size_sqft')} sqft" if room.get("size_sqft") else "",
@@ -140,7 +140,6 @@ class PlantSetupStore:
                         for bit in [
                             plant.get("name", ""),
                             f"species={plant.get('species')}" if plant.get("species") else "",
-                            f"position={plant.get('position_in_room')}" if plant.get("position_in_room") else "",
                             f"soil={plant.get('soil_type')}" if plant.get("soil_type") else "",
                             f"fertilizer={plant.get('fertilizer_type')}" if plant.get("fertilizer_type") else "",
                             f"room={room.get('name')}" if room.get("name") else "",
@@ -159,10 +158,10 @@ class PlantSetupStore:
         Failures: File IO issues can raise exceptions while reading saved data.
         """
 
-        self.file_manager.ensure_workspace()
+        self.file_manager.ensure_user_workspace(user_id)
         user_key = str(user_id)
-        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path) if row["user_id"] == user_key]
-        rooms = [row for row in self.file_manager.read_csv(self.file_manager.rooms_csv_path) if row["user_id"] == user_key]
+        plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path(user_key)) if row["user_id"] == user_key]
+        rooms = [row for row in self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_key)) if row["user_id"] == user_key]
 
         if not plants:
             return "What plants do you have at home right now?"
@@ -170,16 +169,14 @@ class PlantSetupStore:
         for plant in plants:
             if not plant.get("species"):
                 return f"What species is your {plant.get('name', 'plant')}?"
-            if not plant.get("position_in_room"):
-                return f"Where exactly do you keep your {plant.get('name', 'plant')} in the room?"
             if not plant.get("soil_type"):
                 return f"What soil mix is your {plant.get('name', 'plant')} in?"
             if not plant.get("fertilizer_type"):
                 return f"What fertilizer do you use for your {plant.get('name', 'plant')}?"
 
         for room in rooms:
-            if not room.get("window_direction"):
-                return f"Which direction does the light come from in {room.get('name', 'that room')}?"
+            if not room.get("windows"):
+                return f"Which direction do the windows face in {room.get('name', 'that room')}?"
             if not room.get("city"):
                 return f"Which city is {room.get('name', 'that room')} in?"
             if not room.get("size_sqft"):
@@ -210,7 +207,7 @@ class PlantSetupStore:
             "user_id": user_key,
             "name": room_name,
             "type": str(room_payload.get("type", "")).strip(),
-            "window_direction": str(room_payload.get("window_direction", "")).strip(),
+            "windows": str(room_payload.get("windows", "")).strip(),
             "size_sqft": str(room_payload.get("size_sqft", "")).strip(),
             "has_grow_light": self._normalize_bool(room_payload.get("has_grow_light")),
             "city": str(room_payload.get("city", "")).strip(),

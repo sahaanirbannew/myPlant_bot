@@ -52,7 +52,8 @@ STYLE
 
 BEHAVIOR
 - Personalize every response using the user's context when it is available
-- Try to gather static setup information over time, especially plant names, species, room type, light direction, room size, grow light use, soil type, fertilizer type, and plant position in the room
+- Try to gather static setup information over time, especially plant names, species, room type, room windows (up to 3), room size, grow light use, soil type, and fertilizer type
+- Understand context hierarchically: A Home has rooms, a room can have 1 to 3 windows, and a room contains plants. Treat windows as a room trait, not a plant trait.
 - If the user's message is not in English, reply in that same language
 - When extracting or saving structured setup details, normalize those saved values into English
 - Never assume an exact species, cultivar, variety, or placement from a vague description
@@ -913,8 +914,8 @@ class BotService:
             "Return only valid JSON with this shape:\n"
             "{\n"
             '  "clarification_question": "",\n'
-            '  "rooms": [{"name":"","type":"","window_direction":"","size_sqft":"","has_grow_light":"","city":""}],\n'
-            '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}]\n'
+            '  "rooms": [{"name":"","type":"","windows":"","size_sqft":"","has_grow_light":"","city":""}],\n'
+            '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}]\n'
             "}\n"
             "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n"
             "If there is an ambiguity, set `clarification_question` to one short English question that would resolve it. Otherwise leave it empty.\n\n"

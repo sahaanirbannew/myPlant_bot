@@ -24,7 +24,7 @@ def test_plant_setup_store_persists_rooms_and_plants(tmp_path: Path) -> None:
                 {
                     "name": "Living Room",
                     "type": "indoor",
-                    "window_direction": "east",
+                    "windows": "east",
                     "size_sqft": "140",
                     "has_grow_light": "true",
                     "city": "Mumbai",
@@ -35,7 +35,6 @@ def test_plant_setup_store_persists_rooms_and_plants(tmp_path: Path) -> None:
                     "name": "Pothos",
                     "species": "Epipremnum aureum",
                     "room_name": "Living Room",
-                    "position_in_room": "near the bookshelf",
                     "soil_type": "potting mix",
                     "fertilizer_type": "",
                 }
@@ -44,14 +43,13 @@ def test_plant_setup_store_persists_rooms_and_plants(tmp_path: Path) -> None:
         timestamp="2026-04-02T18:00:00",
     )
 
-    plants_csv = (tmp_path / "data" / "plants.csv").read_text(encoding="utf-8")
-    rooms_csv = (tmp_path / "data" / "rooms.csv").read_text(encoding="utf-8")
+    plants_csv = (tmp_path / "data" / "users" / "123" / "plants.csv").read_text(encoding="utf-8")
+    rooms_csv = (tmp_path / "data" / "users" / "123" / "rooms.csv").read_text(encoding="utf-8")
 
     assert "Living Room" in rooms_csv
     assert "140" in rooms_csv
     assert "true" in rooms_csv
     assert "Epipremnum aureum" in plants_csv
-    assert "near the bookshelf" in plants_csv
     assert any(summary["file_path"].endswith("rooms.csv") for summary in write_summaries)
     assert any(summary["file_path"].endswith("plants.csv") for summary in write_summaries)
     assert store.next_missing_setup_question(user_id=123) == "What fertilizer do you use for your Pothos?"

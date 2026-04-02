@@ -26,7 +26,7 @@ class DecisionEngine:
         if room.get("type") == "indoor":
             recommendations.append("Indoor placement usually means watering should be less frequent.")
 
-        if room.get("window_direction") == "north":
+        if "north" in room.get("windows", "").lower():
             recommendations.append("A north-facing window usually means lower light conditions.")
 
         if analysis.get("frequent_watering"):

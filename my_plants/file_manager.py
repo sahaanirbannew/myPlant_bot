@@ -25,7 +25,7 @@ ROOM_HEADERS = [
     "user_id",
     "name",
     "type",
-    "window_direction",
+    "windows",
     "size_sqft",
     "has_grow_light",
     "city",
@@ -103,39 +103,61 @@ class FileManager:
     def __init__(self, base_dir: Path) -> None:
         """Task: Initialize the file manager with paths relative to the script location.
         Input: The base directory where the My Plants package lives.
-        Output: A ready-to-use FileManager instance with known file paths.
+        Output: A ready-to-use FileManager instance with known root file paths.
         Failures: No failure is expected unless a non-path-like argument is supplied.
         """
 
         self.base_dir = base_dir
         self.data_dir = base_dir / "data"
-        self.events_dir = base_dir / "events"
-        self.memory_dir = base_dir / "memory"
-        self.raw_logs_dir = base_dir / "raw_logs"
-        self.plants_csv_path = self.data_dir / "plants.csv"
-        self.rooms_csv_path = self.data_dir / "rooms.csv"
-        self.events_csv_path = self.events_dir / "events.csv"
         self.requirements_json_path = self.data_dir / "plant_requirements.json"
         self.city_profiles_json_path = self.data_dir / "city_profiles.json"
 
+    def user_dir(self, user_id: str) -> Path:
+        """Task: Resolve the isolated directory boundary for a single user."""
+        return self.data_dir / "users" / str(user_id)
+
+    def plants_csv_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "plants.csv"
+
+    def rooms_csv_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "rooms.csv"
+
+    def events_csv_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "events.csv"
+
+    def user_memory_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "memory.json"
+
+    def raw_log_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "raw.log"
+
     def ensure_workspace(self) -> None:
-        """Task: Create the required directory and seed-file structure when absent.
+        """Task: Create global required directory and seed-file structure when absent.
         Input: No direct arguments; uses the configured base directory.
-        Output: Required folders and starter files exist on disk.
+        Output: Required folders and starter config files exist on disk.
         Failures: Raises OSError if directories or files cannot be created.
         """
 
-        for directory in (self.data_dir, self.events_dir, self.memory_dir, self.raw_logs_dir):
-            directory.mkdir(parents=True, exist_ok=True)
-
-        self._ensure_csv_file(self.plants_csv_path, PLANT_HEADERS)
-        self._ensure_csv_file(self.rooms_csv_path, ROOM_HEADERS)
-        self._ensure_csv_file(self.events_csv_path, EVENT_HEADERS)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
         if not self.requirements_json_path.exists():
             self.write_json(self.requirements_json_path, DEFAULT_REQUIREMENTS)
         if not self.city_profiles_json_path.exists():
             self.write_json(self.city_profiles_json_path, DEFAULT_CITY_PROFILES)
+
+    def ensure_user_workspace(self, user_id: str) -> None:
+        """Task: Create per-user required directory and starter files.
+        Input: The string user_id.
+        Output: User's folder and empty state files created.
+        Failures: Raises OSError.
+        """
+        
+        user_dir = self.user_dir(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        self._ensure_csv_file(self.plants_csv_path(user_id), PLANT_HEADERS)
+        self._ensure_csv_file(self.rooms_csv_path(user_id), ROOM_HEADERS)
+        self._ensure_csv_file(self.events_csv_path(user_id), EVENT_HEADERS)
 
     def read_csv(self, path: Path) -> list[dict[str, str]]:
         """Task: Read structured rows from a CSV file into dictionaries.
@@ -209,23 +231,7 @@ class FileManager:
         with path.open("a", encoding="utf-8") as text_file:
             text_file.write(content)
 
-    def user_memory_path(self, user_id: str) -> Path:
-        """Task: Build the path to the per-user memory JSON file.
-        Input: The user identifier string.
-        Output: The full path to the memory file for that user.
-        Failures: No failure is expected unless the user_id is not serializable as a path fragment.
-        """
 
-        return self.memory_dir / f"{user_id}.json"
-
-    def raw_log_path(self, user_id: str) -> Path:
-        """Task: Build the path to the per-user raw log text file.
-        Input: The user identifier string.
-        Output: The full path to the raw log file for that user.
-        Failures: No failure is expected unless the user_id is not serializable as a path fragment.
-        """
-
-        return self.raw_logs_dir / f"{user_id}.log"
 
     def _ensure_csv_file(self, path: Path, headers: list[str]) -> None:
         """Task: Create a CSV file with headers if it does not already exist.

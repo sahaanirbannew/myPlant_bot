@@ -126,7 +126,7 @@ class ResponseGenerator:
                 f"Species: {plant.get('species', '')}",
                 f"Latest activity summary: {latest_activity}",
                 f"Room type: {room.get('type', '')}",
-                f"Window direction: {room.get('window_direction', '')}",
+                f"Windows: {room.get('windows', '')}",
                 f"City: {room.get('city', '')}",
                 f"Soil type: {plant.get('soil_type', '')}",
                 f"Fertilizer type: {plant.get('fertilizer_type', '')}",
@@ -197,7 +197,7 @@ class ResponseGenerator:
         """
 
         room_type = room.get("type", "")
-        window_direction = room.get("window_direction", "")
+        windows = room.get("windows", "")
         city = room.get("city", "")
 
         details: list[str] = []
@@ -208,7 +208,7 @@ class ResponseGenerator:
         elif room_type == "outdoor":
             details.append(f"{plant_name} is outdoors")
 
-        if window_direction == "north":
+        if "north" in windows.lower():
             details.append("getting north-facing light")
 
         if city:

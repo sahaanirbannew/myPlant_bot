@@ -30,9 +30,10 @@ class ContextBuilder:
         Failures: File read or decode errors can interrupt context assembly.
         """
 
-        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path)
-        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path)
-        events = self.file_manager.read_csv(self.file_manager.events_csv_path)
+        self.file_manager.ensure_user_workspace(user_id)
+        plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id))
+        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_id))
+        events = self.file_manager.read_csv(self.file_manager.events_csv_path(user_id))
         memory = self.file_manager.read_json(self.file_manager.user_memory_path(user_id), default={})
         requirements = self.file_manager.read_json(self.file_manager.requirements_json_path, default={})
         city_profiles = self.file_manager.read_json(self.file_manager.city_profiles_json_path, default={})

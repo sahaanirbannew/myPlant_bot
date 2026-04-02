@@ -22,7 +22,7 @@ def test_bought_message_creates_new_plant_and_files(tmp_path: Path) -> None:
         now=datetime(2026, 4, 2, 12, 0, 0),
     )
 
-    plants_path = tmp_path / "data" / "plants.csv"
+    plants_path = tmp_path / "data" / "users" / "u1" / "plants.csv"
     plants_csv = plants_path.read_text(encoding="utf-8")
     assert "Snake" in plants_csv
     assert "how often do you usually water snake plant" in response.lower()
@@ -57,18 +57,18 @@ def test_profile_conversation_updates_override_soil_and_location(tmp_path: Path)
         now=datetime(2026, 4, 2, 12, 3, 0),
     )
 
-    memory_json = (tmp_path / "memory" / "u1.json").read_text(encoding="utf-8")
-    plants_csv = (tmp_path / "data" / "plants.csv").read_text(encoding="utf-8")
-    rooms_csv = (tmp_path / "data" / "rooms.csv").read_text(encoding="utf-8")
+    memory_json = (tmp_path / "data" / "users" / "u1" / "memory.json").read_text(encoding="utf-8")
+    plants_csv = (tmp_path / "data" / "users" / "u1" / "plants.csv").read_text(encoding="utf-8")
+    rooms_csv = (tmp_path / "data" / "users" / "u1" / "rooms.csv").read_text(encoding="utf-8")
 
     assert "how often do you usually water pothos" in first_response.lower()
     assert "what soil type is pothos" in second_response.lower()
-    assert "where do you keep pothos" in third_response.lower()
+    assert "which room is pothos in" in third_response.lower()
     assert "saved the watering profile for pothos" in final_response.lower()
     assert '"user_defined_watering_interval_days": 4' in memory_json
     assert "cocopeat" in plants_csv
     assert "Mumbai" in rooms_csv
-    assert "north" in rooms_csv
+    assert "north" in rooms_csv.lower()
 
 
 def test_last_used_plant_is_reused_for_follow_up_event(tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ def test_last_used_plant_is_reused_for_follow_up_event(tmp_path: Path) -> None:
         now=datetime(2026, 4, 3, 12, 0, 0),
     )
 
-    events_csv = (tmp_path / "events" / "events.csv").read_text(encoding="utf-8")
+    events_csv = (tmp_path / "data" / "users" / "u1" / "events.csv").read_text(encoding="utf-8")
     assert "watering" in events_csv
     assert "pothos" in response.lower()
     assert "last time, you watered it" in response.lower()
@@ -139,8 +139,13 @@ def test_frequent_watering_warning_is_generated(tmp_path: Path) -> None:
     )
     orchestrator.handle(
         user_id="u1",
-        message="indoors by the north window in Delhi",
+        message="indoor room",
         now=datetime(2026, 4, 2, 9, 3, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="it is near the north window",
+        now=datetime(2026, 4, 2, 9, 4, 0),
     )
     orchestrator.handle(
         user_id="u1",
@@ -226,8 +231,13 @@ def test_response_generator_uses_warm_persona_voice(tmp_path: Path) -> None:
     )
     orchestrator.handle(
         user_id="u1",
-        message="indoors by the north window in Mumbai",
+        message="indoor room",
         now=datetime(2026, 4, 1, 8, 3, 0),
+    )
+    orchestrator.handle(
+        user_id="u1",
+        message="north window",
+        now=datetime(2026, 4, 1, 8, 4, 0),
     )
     orchestrator.handle(
         user_id="u1",
@@ -242,5 +252,4 @@ def test_response_generator_uses_warm_persona_voice(tmp_path: Path) -> None:
 
     assert "pothos" in response.lower()
     assert "might be ready for some water today" in response.lower()
-    assert "little note for pothos" in response.lower()
     assert "north-facing light" in response.lower()

@@ -94,7 +94,7 @@ class MemoryExtractor:
                     {
                         "name": f"{direction.capitalize()} Window Room",
                         "type": "indoor",
-                        "window_direction": direction,
+                        "windows": direction,
                     }
                 )
                 break
