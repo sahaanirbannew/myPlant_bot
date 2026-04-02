@@ -52,6 +52,8 @@ class ReminderAgent:
 
         lines = [
             "Write one short user-facing watering reminder message.",
+            "Be concise and objective.",
+            "If the user's language is inferable from context, reply in that language. Otherwise reply in English.",
             f"Current timestamp: {now_timestamp}",
             "Plants due for watering:",
         ]

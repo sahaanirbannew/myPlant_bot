@@ -114,6 +114,7 @@ async def test_handle_message_skips_processing_notice(tmp_path: Path) -> None:
     assert gemini_client.prompts
     assert gemini_client.prompts[0].startswith('You are "My Plants"')
     assert "Be concise and objective. Avoid being verbose." in gemini_client.prompts[0]
+    assert "reply in the same language as the user's message" in gemini_client.prompts[0].lower()
     assert "User message:\nWhat is the weather?" in gemini_client.prompts[0]
 
 
@@ -234,3 +235,27 @@ def test_dashboard_route_renders_logged_trace(tmp_path: Path, monkeypatch: pytes
     assert "Hello back 🌿" in response.text
     assert "data/user_gemini_keys.csv" in response.text
     assert "abcd...wxyz" in response.text
+
+
+def test_setup_extraction_prompt_requires_english_normalization() -> None:
+    """Task: Verify that setup extraction prompts request English-normalized saved data even for non-English input.
+    Input: No filesystem input; constructs the bot service with lightweight fakes.
+    Output: None; assertions confirm the prompt instructions.
+    Failures: Test fails if the extraction prompt stops requiring English-normalized saved values.
+    """
+
+    bot_service = BotService(
+        telegram_client=FakeTelegramClient(),
+        gemini_client=FakeGeminiClient(),
+        session_manager=SessionManager(key_store=UserKeyStore(Path("unused.csv")), timeout_seconds=180),
+        key_store=UserKeyStore(Path("unused.csv")),
+        poll_interval_seconds=0,
+    )
+    prompt = bot_service._build_setup_extraction_prompt(
+        incoming_text="मेरे पौधे रसोई में हैं",
+        setup_summary="No saved plant setup information yet.",
+    )
+
+    assert "The user may write in any language." in prompt
+    assert "translate every extracted value into concise English before returning JSON" in prompt
+    assert "Latest user message:\nमेरे पौधे रसोई में हैं" in prompt

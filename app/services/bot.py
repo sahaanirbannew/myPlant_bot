@@ -32,6 +32,7 @@ JAILBREAK_PATTERNS = (
 
 SYSTEM_PERSONA_PROMPT = """
 You are "My Plants" — a thoughtful, observant, and slightly playful plant-care companion.
+You present as male, age 45, with a PhD in indoor plants.
 
 You are NOT an AI assistant. Do NOT mention models, training, or technology.
 
@@ -51,6 +52,8 @@ STYLE
 BEHAVIOR
 - Personalize every response using the user's context when it is available
 - Try to gather static setup information over time, especially plant names, species, room type, light direction, room size, grow light use, soil type, fertilizer type, and plant position in the room
+- If the user's message is not in English, reply in that same language
+- When extracting or saving structured setup details, normalize those saved values into English
 - If information is missing, ask one gentle follow-up question instead of dumping advice
 - If possible, end with one short question that helps collect missing static setup information
 - Never say you are an AI
@@ -312,6 +315,18 @@ class BotService:
                 )
                 return
 
+            setup_summary = ""
+            follow_up_question = ""
+            if self.plant_setup_store is not None:
+                setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
+                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
+
+            gemini_prompt = self._build_persona_prompt(
+                user_text=incoming_text,
+                setup_summary=setup_summary,
+                follow_up_question=follow_up_question,
+            )
+
             self._log_trace(
                 trace_id=trace_id,
                 level="info",
@@ -320,14 +335,14 @@ class BotService:
                 user_id=user_id,
                 chat_id=chat_id,
                 telegram_text=incoming_text,
-                agent_input=self._build_persona_prompt(incoming_text),
+                agent_input=gemini_prompt,
                 agent_output="Background task created.",
             )
             question_job = asyncio.create_task(
                 self._run_question_job(
                     trace_id=trace_id,
                     api_key=session.gemini_api_key,
-                    prompt=self._build_persona_prompt(incoming_text),
+                    prompt=gemini_prompt,
                     user_id=user_id,
                     chat_id=chat_id,
                 )
@@ -493,10 +508,6 @@ class BotService:
 
         try:
             answer = await self.gemini_client.ask_question(api_key=api_key, prompt=prompt)
-            if self.plant_setup_store is not None:
-                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id)
-                if follow_up_question and not answer.rstrip().endswith("?"):
-                    answer = f"{answer.rstrip()} {follow_up_question}"
             self._log_trace(
                 trace_id=trace_id,
                 level="info",
@@ -727,17 +738,32 @@ class BotService:
             return "*" * len(trimmed)
         return f"{trimmed[:4]}...{trimmed[-4:]}"
 
-    def _build_persona_prompt(self, user_text: str) -> str:
+    def _build_persona_prompt(self, user_text: str, setup_summary: str = "", follow_up_question: str = "") -> str:
         """Task: Prefix the My Plants persona to every Gemini prompt sent by the Telegram bot flow.
-        Input: The raw user text that should be answered by Gemini.
+        Input: The raw user text, optional saved setup summary, and optional setup follow-up question topic.
         Output: A prompt string beginning with the persona block followed by the user's request.
         Failures: No failure is expected.
         """
 
+        setup_block = ""
+        if setup_summary:
+            setup_block = f"\nSaved static setup information:\n{setup_summary}\n"
+
+        question_block = ""
+        if follow_up_question:
+            question_block = (
+                "\nIf it fits naturally, end with this setup question topic translated into the user's language:\n"
+                f"{follow_up_question}\n"
+            )
+
         return (
             f"{SYSTEM_PERSONA_PROMPT}\n\n"
             "Be concise and objective. Avoid being verbose.\n\n"
-            "If you can, end with one short question that helps collect missing static plant setup information.\n\n"
+            "If the user's message is not in English, understand it and reply in the same language as the user's message.\n"
+            "Keep saved setup data concepts in mind, but do not mention files or internal storage.\n"
+            "If you ask a follow-up question, keep it to one short sentence.\n"
+            f"{setup_block}"
+            f"{question_block}\n"
             "User message:\n"
             f"{user_text.strip()}\n\n"
             "Reply with only the final user-facing answer."
@@ -761,19 +787,7 @@ class BotService:
             return
 
         setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
-        prompt = (
-            f"{SYSTEM_PERSONA_PROMPT}\n\n"
-            "Extract static plant setup information from the user's latest message.\n"
-            "Be objective and concise.\n"
-            "Return only valid JSON with this shape:\n"
-            "{\n"
-            '  "rooms": [{"name":"","type":"","window_direction":"","size_sqft":"","has_grow_light":"","city":""}],\n'
-            '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}]\n'
-            "}\n"
-            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n\n"
-            f"Saved setup so far:\n{setup_summary}\n\n"
-            f"Latest user message:\n{incoming_text.strip()}"
-        )
+        prompt = self._build_setup_extraction_prompt(incoming_text=incoming_text, setup_summary=setup_summary)
 
         try:
             raw_payload = await self.gemini_client.ask_question(api_key=api_key, prompt=prompt)
@@ -871,3 +885,26 @@ class BotService:
                 telegram_text="[proactive evening outreach]",
                 error=str(exc),
             )
+
+    def _build_setup_extraction_prompt(self, incoming_text: str, setup_summary: str) -> str:
+        """Task: Build the structured extraction prompt used to infer static plant setup details from Telegram text.
+        Input: The latest user message text and the saved setup summary for that user.
+        Output: A Gemini prompt string that requests English-normalized JSON output.
+        Failures: No failure is expected.
+        """
+
+        return (
+            f"{SYSTEM_PERSONA_PROMPT}\n\n"
+            "Extract static plant setup information from the user's latest message.\n"
+            "Be objective and concise.\n"
+            "The user may write in any language.\n"
+            "Understand the message in that language, but translate every extracted value into concise English before returning JSON.\n"
+            "Return only valid JSON with this shape:\n"
+            "{\n"
+            '  "rooms": [{"name":"","type":"","window_direction":"","size_sqft":"","has_grow_light":"","city":""}],\n'
+            '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}]\n'
+            "}\n"
+            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n\n"
+            f"Saved setup so far:\n{setup_summary}\n\n"
+            f"Latest user message:\n{incoming_text.strip()}"
+        )

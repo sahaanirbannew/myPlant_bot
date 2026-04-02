@@ -16,6 +16,7 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Gemini responses are now instructed to stay concise and objective
 - Static plant setup details inferred from Telegram conversations are saved into the existing `my_plants` CSV files
 - Proactive setup questions can be sent between 5 PM and 7 PM at a deterministic random time per user per day
+- Non-English user messages are understood in place, setup data is normalized into English for storage, and replies stay in the user's language
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 - Separate `my_plants/` file-backed backend using CSV, JSON, and text files only
@@ -146,6 +147,8 @@ Gemini prompt behavior:
 - The Telegram bot now prefixes the My Plants persona at the start of every Gemini question prompt.
 - The `my_plants` response and reminder layers also begin Gemini prompts with the same persona block.
 - The persona now explicitly asks Gemini to be concise, objective, and to end with one short setup question when that would help collect static plant information.
+- If the user writes in a non-English language, prompts now tell Gemini to answer in that same language.
+- When setup facts are extracted for storage, prompts now tell Gemini to translate the saved values into English.
 
 ## Static setup memory
 

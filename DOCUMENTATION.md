@@ -189,6 +189,7 @@ Telegram response behavior:
 - The My Plants persona block is placed at the start of every Gemini prompt.
 - Prompts explicitly ask for concise and objective responses.
 - When useful, responses should end with one short question to gather missing static setup information.
+- If a user writes in a non-English language, prompts instruct Gemini to reply in that same language.
 
 Static setup persistence:
 
@@ -196,6 +197,7 @@ Static setup persistence:
 - Inferred room details are saved to `my_plants/data/rooms.csv`.
 - Inferred plant details are saved to `my_plants/data/plants.csv`.
 - Saved fields now include plant name, species, room, room type, window direction, room size, grow light use, city, plant position, soil type, and fertilizer type when available.
+- When a user message is in a non-English language, the extracted setup values are translated into English before they are saved.
 
 Evening outreach:
 
