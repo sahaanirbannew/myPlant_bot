@@ -134,6 +134,9 @@ class FileManager:
     def conversation_state_path(self, user_id: str) -> Path:
         return self.user_dir(user_id) / "conversation_state.json"
 
+    def conversation_history_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "conversation_history.json"
+
     def load_conversation_state(self, user_id: str) -> dict[str, Any] | None:
         """Task: Load the active conversation state. Returns None if it doesn't exist."""
         path = self.conversation_state_path(user_id)
@@ -151,6 +154,23 @@ class FileManager:
         path = self.conversation_state_path(user_id)
         if path.exists():
             path.unlink()
+
+    def load_conversation_history(self, user_id: str) -> list[dict[str, str]]:
+        """Task: Load the conversation history for a user, returning an empty list if absent."""
+        path = self.conversation_history_path(user_id)
+        if not path.exists():
+            return []
+        return self.read_json(path, default=[])
+
+    def append_conversation(self, user_id: str, role: str, message: str) -> None:
+        """Task: Append a message to the conversation history, keeping only the last 20 messages.
+        Input: The user ID, role ('user' or 'bot'), and the raw message string.
+        Output: Disk updated with the modified truncated list.
+        """
+        history = self.load_conversation_history(user_id)
+        history.append({"role": role, "message": message})
+        history = history[-20:]
+        self.write_json(self.conversation_history_path(user_id), history)
 
     def ensure_workspace(self) -> None:
         """Task: Create global required directory and seed-file structure when absent.

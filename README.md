@@ -24,7 +24,8 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Personalized watering scheduler that adapts to room type, city profile, soil type, user history, and user-defined frequency
 - Friendly reminder scanning that groups due plants into natural-sounding watering messages
 - Rule-based profile conversation flow that collects watering frequency, soil type, and plant location
-- Warm "My Plants" companion persona, with Gemini handling the conversational phrasing and inference layer when configured
+- Warm "Anirban" companion persona, with Gemini handling the conversational phrasing and inference layer when configured. (Developer: Anirban Saha, www.anirbansaha.com)
+- **Robust Conversation History:** Maintains a rolling window of the last 20 messages for LLM context injection, naturally binding follow-up sentences to arbitrary past questions automatically.
 
 ## Project structure
 
@@ -108,7 +109,7 @@ What it does:
 - honors user-defined watering frequency as the highest-priority interval override
 - asks follow-up profile questions for watering frequency, soil type, and plant location
 - scans all plants for due watering reminders and groups them into friendly responses
-- replies in a warm, calm, slightly playful "My Plants" voice, with a local fallback if Gemini is unavailable
+- replies in a warm, calm, slightly playful "Anirban" voice, with a local fallback if Gemini is unavailable
 
 Optional My Plants environment:
 

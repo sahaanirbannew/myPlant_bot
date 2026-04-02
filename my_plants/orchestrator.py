@@ -59,13 +59,18 @@ class Orchestrator:
         self.response_generator = response_generator
 
     def handle(self, user_id: str, message: str, now: datetime | None = None) -> str:
-        """Task: Run the complete deterministic handling flow for a user message.
-        Input: The user id, raw message text, and an optional datetime override for testing.
-        Output: A conversational response string from the backend.
-        Failures: File IO and timestamp parsing issues can raise runtime exceptions.
-        """
-
+        """Task: Safe wrapper to track conversation history automatically."""
         self.file_manager.ensure_user_workspace(user_id)
+        history = self.file_manager.load_conversation_history(user_id)
+        self.file_manager.append_conversation(user_id, "user", message)
+        
+        response = self._handle_internal(user_id, message, history, now)
+
+        self.file_manager.append_conversation(user_id, "bot", response)
+        return response
+
+    def _handle_internal(self, user_id: str, message: str, history: list[dict[str, str]], now: datetime | None = None) -> str:
+        """Task: Run the complete deterministic handling flow for a user message."""
         timestamp = iso_now(now)
         self._log_raw_message(user_id=user_id, message=message, timestamp=timestamp)
 
@@ -205,6 +210,8 @@ class Orchestrator:
         decisions = self.decision_engine.evaluate(context=context, analysis=analysis)
         latest_activity = self._summarize_recent_activity(context["recent_events"])
         return self.response_generator.generate(
+            message=message,
+            history=history,
             context=context,
             analysis=analysis,
             decisions=decisions,

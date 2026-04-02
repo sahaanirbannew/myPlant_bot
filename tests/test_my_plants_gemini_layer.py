@@ -53,6 +53,8 @@ def test_response_generator_uses_gemini_when_configured() -> None:
     fake_client = FakeGeminiInferenceClient("Pothos feels pretty steady today 🌿")
     generator = ResponseGenerator(gemini_client=fake_client)
     result = generator.generate(
+        message="how is it doing?",
+        history=[],
         context={
             "plant": {"id": "plant_1", "name": "Pothos", "species": "pothos", "soil_type": "potting mix", "fertilizer_type": ""},
             "room": {"type": "indoor", "window_direction": "north", "city": "Mumbai"},
@@ -77,7 +79,7 @@ def test_response_generator_uses_gemini_when_configured() -> None:
 
     assert result == "Pothos feels pretty steady today 🌿"
     assert fake_client.prompts
-    assert 'You are "My Plants"' in fake_client.prompts[0]
+    assert 'You are "Anirban"' in fake_client.prompts[0]
     assert "German man in his mid-40s with a PhD in indoor plants" in fake_client.prompts[0]
     assert "Plant name: Pothos" in fake_client.prompts[0]
     assert "Computed watering interval days: 4.0" in fake_client.prompts[0]

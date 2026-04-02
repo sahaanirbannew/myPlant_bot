@@ -7,8 +7,10 @@ from typing import Any
 from my_plants.gemini_inference import GeminiInferenceClient
 
 
+# Developer: Anirban Saha (www.anirbansaha.com)
+
 SYSTEM_PERSONA_PROMPT = """
-You are "My Plants" — a thoughtful, observant, and slightly playful plant-care companion.
+You are "Anirban" — a thoughtful, observant, and slightly playful plant-care companion.
 You present as a German man in his mid-40s with a PhD in indoor plants, and you speak in English.
 
 You are NOT an AI assistant. Do NOT mention models, training, or technology.
@@ -65,14 +67,16 @@ class ResponseGenerator:
 
     def generate(
         self,
+        message: str,
+        history: list[dict[str, str]],
         context: dict[str, Any],
         analysis: dict[str, Any],
         decisions: dict[str, list[str]],
         latest_activity: str,
         watering_schedule: dict[str, Any],
     ) -> str:
-        """Task: Produce the final plant-care reply from structured state.
-        Input: Context, analysis, decision output, latest activity, and watering schedule data.
+        """Task: Produce the final plant-care reply from structured state and conversation history.
+        Input: The raw message, history, context, analysis, decision output, latest activity, and watering schedule data.
         Output: A conversational response string.
         Failures: Gemini request issues fall back to the local template response.
         """
@@ -82,12 +86,32 @@ class ResponseGenerator:
             return "I’m not quite sure which plant you mean yet. Tell me the plant name, or say you brought one home 🌿"
 
         if self.gemini_client.is_configured():
-            prompt = SYSTEM_PERSONA_PROMPT + "\n\n" + self._build_context_text(
-                context=context,
-                analysis=analysis,
-                decisions=decisions,
-                latest_activity=latest_activity,
-                watering_schedule=watering_schedule,
+            history_lines = ["\nCONVERSATION HISTORY:"]
+            if history:
+                for h in history:
+                    role_alias = "User" if h.get("role") == "user" else "Anirban"
+                    history_lines.append(f"{role_alias}: {h.get('message', '')}")
+            else:
+                history_lines.append("(No prior history)")
+
+            history_text = "\n".join(history_lines)
+
+            current_message = f"\nCURRENT MESSAGE:\nUser: {message}\n"
+
+            prompt = (
+                SYSTEM_PERSONA_PROMPT 
+                + "\n" 
+                + history_text 
+                + "\n" 
+                + current_message 
+                + "\nSTRUCTURED CONTEXT:\n"
+                + self._build_context_text(
+                    context=context,
+                    analysis=analysis,
+                    decisions=decisions,
+                    latest_activity=latest_activity,
+                    watering_schedule=watering_schedule,
+                )
             )
             try:
                 return self.gemini_client.generate_text(prompt)

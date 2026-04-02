@@ -202,6 +202,7 @@ Static setup persistence and Data Storage Rules:
   - `my_plants/data/users/<user_id>/events.csv`: Transactional events like watering and fertilizing.
   - `my_plants/data/users/<user_id>/memory.json`: User preferences, last active plant, and dynamic overrides.
   - `my_plants/data/users/<user_id>/conversation_state.json`: Active multi-turn context (which plant and what question is currently being asked).
+  - `my_plants/data/users/<user_id>/conversation_history.json`: Rolling window of the last 20 conversational messages (user/bot).
 - **What data is saved:**
   - **Room profiles:** Name, type, a list of windows (up to 3), size, and grow light flags. City data acts as a home-level property mostly placed onto the room.
   - **Plant profiles:** Name, species, soil type, and fertilizer type. They are linked to `room_id`s to establish a clean Home -> Room -> Plant hierarchy.
@@ -210,6 +211,7 @@ Static setup persistence and Data Storage Rules:
   - **Conversational Memory Extraction:** If a conversation state is active, the bot uses `extract_with_llm` to dynamically format a JSON-extraction prompt (e.g., asking Gemini to cleanly extract "days" from natural text like "once every week or so").
   - **Implicit LLM Extraction (`BotService`):** For general queries, the Telegram bot pipes the user message directly to Gemini to extract structured `plants` and `rooms` JSON data. The prompt rigorously prevents Gemini from assuming plant placement or variety details unless explicitly described.
 - **How data is retrieved and used (conditions for retrieval):** 
+  - **Conversational History Injection:** To ensure semantic continuity (i.e. remembering "what the user just said"), `Orchestrator` buffers the latest message into the `conversation_history.json` and then retrieves the entire rolling window to inject dynamically at the top of the LLM prompt immediately before the new message and properties array. This ensures high-accuracy follow-ups when users just reply using pronouns or fragments like "mostly sand".
   - **Prompt Injection:** When the bot fields a question (e.g. "describe my room"), `PlantSetupStore.build_user_setup_summary(user_id)` retrieves all room and plant CSVs and formats them into a rich, readable summary block. This block is injected at the top of the LLM prompt.
   - **Dynamic Rule Resolution:** For CLI usage and backend analysis, `ContextBuilder.build` parses the files to pass full dictionary payloads into decision engines. The bot dynamically recalculates parameters based on the *retrieved room setup, window layouts, and city climate*, which strictly overrides standard textbook guidance forming the basis of all care recommendations.
 - **Logic behind Conversation Topics:**
