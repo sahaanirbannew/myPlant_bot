@@ -172,16 +172,8 @@ class PlantSetupStore:
         plants = [row for row in self.file_manager.read_csv(self.file_manager.plants_csv_path(user_key)) if row["user_id"] == user_key]
         rooms = [row for row in self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_key)) if row["user_id"] == user_key]
 
-        if not plants:
-            return "What plants do you have at home right now?"
-
-        for plant in plants:
-            if not plant.get("species"):
-                return f"What species is your {plant.get('name', 'plant')}?"
-            if not plant.get("soil_type"):
-                return f"What soil mix is your {plant.get('name', 'plant')} in?"
-            if not plant.get("fertilizer_type"):
-                return f"What fertilizer do you use for your {plant.get('name', 'plant')}?"
+        if not rooms:
+            return "Before we add any plants, let's set up your environment. Which city are you in, and what room will you keep your plants in?"
 
         for room in rooms:
             if not room.get("windows"):
@@ -192,6 +184,17 @@ class PlantSetupStore:
                 return f"About how big is {room.get('name', 'that room')} in square feet?"
             if room.get("has_grow_light", "").lower() not in {"true", "false"}:
                 return f"Does {room.get('name', 'that room')} have a grow light?"
+
+        if not plants:
+            return "What plants do you have at home right now?"
+
+        for plant in plants:
+            if not plant.get("species"):
+                return f"What species is your {plant.get('name', 'plant')}?"
+            if not plant.get("soil_type"):
+                return f"What soil mix is your {plant.get('name', 'plant')} in?"
+            if not plant.get("fertilizer_type"):
+                return f"What fertilizer do you use for your {plant.get('name', 'plant')}?"
 
         return None
 

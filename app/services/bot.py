@@ -460,7 +460,7 @@ class BotService:
                 await self._send_and_log(
                     trace_id=trace_id,
                     chat_id=chat_id,
-                    text="Gemini API Key validated successfully. Setup is complete.",
+                    text="Gemini API Key validated successfully. Setup is complete! Before we add any plants, let's set up your environment. Which city are you in, and what room will you keep your plants in?",
                     user_id=user_id,
                     telegram_text="[setup key submission]",
                     reason="Setup completion message sent.",
