@@ -203,6 +203,7 @@ Static setup persistence and Data Storage Rules:
   - `my_plants/data/users/<user_id>/memory.json`: User preferences, last active plant, and dynamic overrides.
   - `my_plants/data/users/<user_id>/conversation_state.json`: Active multi-turn context (which plant and what question is currently being asked).
   - `my_plants/data/users/<user_id>/conversation_history.json`: Rolling window of the last 20 conversational messages (user/bot).
+  - `my_plants/data/users/<user_id>/plant_<plant_id>_history.jsonl`: Independent time-series ledgers for every plant tracking all profile updates and care events.
 - **What data is saved:**
   - **Room profiles:** Name, type, a list of windows (up to 3), size, and grow light flags. City data acts as a home-level property mostly placed onto the room.
   - **Plant profiles:** Name, species, soil type, and fertilizer type. They are linked to `room_id`s to establish a clean Home -> Room -> Plant hierarchy.
@@ -218,6 +219,10 @@ Static setup persistence and Data Storage Rules:
   - The system drives conversation using *Pending Profiles*. If a user's plant is missing details (e.g., soil type or location), the bot marks that as a `pending_question`. 
   - The backend pauses normal processing to emit a friendly, targeted follow-up question. 
   - If the user switches topics by sending unrelated keywords (e.g., "bought another plant"), the bot automatically clears the active conversation state to respect the user's organic conversation flow instead of trapping them in a questionnaire loop.
+
+## Account Deletion
+- Sending `/clear_data` to the bot fully purges the user's isolated `my_plants/data/users/<uuid>` filesystem folder.
+- Additionally, it synchronously removes the user's API Key from `user_gemini_keys.csv` and flushes any active cached session states, providing a total clean-slate wipe.
 
 Evening outreach:
 
@@ -239,6 +244,7 @@ Storage model:
 - `my_plants/data/users/<user_id>/events.csv`
 - `my_plants/data/users/<user_id>/memory.json`
 - `my_plants/data/users/<user_id>/raw.log`
+- `my_plants/data/users/<user_id>/plant_<plant_id>_history.jsonl`
 - `my_plants/data/city_profiles.json` (global config)
 - `my_plants/data/plant_requirements.json` (global config)
 

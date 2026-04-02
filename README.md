@@ -26,6 +26,8 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Rule-based profile conversation flow that collects watering frequency, soil type, and plant location
 - Warm "Anirban" companion persona, with Gemini handling the conversational phrasing and inference layer when configured. (Developer: Anirban Saha, www.anirbansaha.com)
 - **Robust Conversation History:** Maintains a rolling window of the last 20 messages for LLM context injection, naturally binding follow-up sentences to arbitrary past questions automatically.
+- **Data Privacy & Account Wiping:** Users can send `/clear_data` to immediately purge all filesystem records, API keys, and session cache.
+- **Time-Series Ledgers:** Generates separate `plant_{id}_history.jsonl` files holding immutable, timestamped event logs (watering, fertilizing, room changes) for advanced analytics.
 
 ## Project structure
 
