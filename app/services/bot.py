@@ -283,6 +283,10 @@ class BotService:
                 )
                 return
 
+            if self.plant_setup_store and self.plant_setup_store.file_manager:
+                self.plant_setup_store.file_manager.ensure_user_workspace(str(user_id))
+                self.plant_setup_store.file_manager.append_conversation(str(user_id), "user", incoming_text)
+
             if self._looks_like_jailbreak(incoming_text):
                 self._log_trace(
                     trace_id=trace_id,
@@ -344,9 +348,19 @@ class BotService:
                 setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
                 follow_up_question = setup_clarification_question or self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
 
+            history_text = "No prior context."
+            if self.plant_setup_store and self.plant_setup_store.file_manager:
+                try:
+                    history = self.plant_setup_store.file_manager.load_conversation_history(str(user_id))
+                    if history:
+                        history_text = "\n".join(f"{h['role'].capitalize()}: {h['message']}" for h in history[-10:])
+                except Exception:
+                    pass
+
             gemini_prompt = self._build_persona_prompt(
                 user_text=incoming_text,
                 setup_summary=setup_summary,
+                history_text=history_text,
                 follow_up_question=follow_up_question,
             )
 
@@ -660,6 +674,9 @@ class BotService:
         """
 
         try:
+            if self.plant_setup_store and self.plant_setup_store.file_manager and reason != "Failed to send message to Telegram.":
+                self.plant_setup_store.file_manager.ensure_user_workspace(str(user_id))
+                self.plant_setup_store.file_manager.append_conversation(str(user_id), "bot", text)
             await self.telegram_client.send_message(chat_id, text)
             self._log_trace(
                 trace_id=trace_id,
@@ -761,37 +778,31 @@ class BotService:
             return "*" * len(trimmed)
         return f"{trimmed[:4]}...{trimmed[-4:]}"
 
-    def _build_persona_prompt(self, user_text: str, setup_summary: str = "", follow_up_question: str = "") -> str:
+    def _build_persona_prompt(self, user_text: str, setup_summary: str, history_text: str, follow_up_question: str = "") -> str:
         """Task: Prefix the My Plants persona to every Gemini prompt sent by the Telegram bot flow.
-        Input: The raw user text, optional saved setup summary, and optional setup follow-up question topic.
-        Output: A prompt string beginning with the persona block followed by the user's request.
+        Input: The raw user text, saved setup summary, loaded history, and optional setup follow-up.
+        Output: A 4-section prompt string.
         Failures: No failure is expected.
         """
 
-        setup_block = ""
-        if setup_summary:
-            setup_block = f"\nSaved static setup information:\n{setup_summary}\n"
-
         question_block = ""
         if follow_up_question:
-            question_block = (
-                "\nIf it fits naturally, end with this setup question topic translated into the user's language:\n"
-                f"{follow_up_question}\n"
-            )
+            question_block = f"\nEnd with this exact translated question: {follow_up_question}\n"
 
         return (
-            f"{SYSTEM_PERSONA_PROMPT}\n\n"
-            "Be concise and objective. Avoid being verbose.\n\n"
-            "If the user's message is not in English, understand it and reply in the same language as the user's message.\n"
-            "Keep saved setup data concepts in mind, but do not mention files or internal storage.\n"
-            "Do not pretend to know the exact species, variety, cultivar, room placement, or light setup if the user has only given a vague description.\n"
-            "If something important is ambiguous, ask one short clarifying question instead of guessing.\n"
-            "If you ask a follow-up question, keep it to one short sentence.\n"
-            f"{setup_block}"
+            "Section 1: Generic Instructions\n"
+            f"{SYSTEM_PERSONA_PROMPT}\n"
+            "Be concise, objective, and avoid verbosity.\n"
+            "If the user's message is not in English, reply in the same language.\n"
+            "Do not pretend to know details of unmentioned species or rooms. Ask one short clarifying question if ambiguous.\n"
             f"{question_block}\n"
-            "User message:\n"
-            f"{user_text.strip()}\n\n"
-            "Reply with only the final user-facing answer."
+            "Section 2: Information about room and elements in the room\n"
+            f"{setup_summary}\n\n"
+            "Section 3: Bot - User conversation last 10 sets of discussion\n"
+            f"{history_text}\n"
+            f"User: {user_text.strip()}\n\n"
+            "Section 4: Response Format\n"
+            "Reply with only the final user-facing answer. No meta-commentary."
         )
 
     async def _extract_and_save_setup_context(
@@ -928,16 +939,23 @@ class BotService:
 
     def _build_setup_extraction_prompt(self, incoming_text: str, setup_summary: str, history_text: str) -> str:
         """Task: Build the structured extraction prompt used to infer static plant setup details from Telegram text.
-        Input: The latest user message text and the saved setup summary for that user.
-        Output: A Gemini prompt string that requests English-normalized JSON output.
+        Input: The latest user message text, the saved setup summary, and the recent history text.
+        Output: A 4-section Gemini prompt string that requests JSON output.
         Failures: No failure is expected.
         """
 
         return (
+            "Section 1: Generic Instructions\n"
             "You are a strict backend data extraction system.\n"
-            "Task: Extract static plant and room setup data from the Latest User Message.\n\n"
-            "CRITICAL CONTEXT RULE: If the user answers with a fragment (like 'east', 'monthly', or 'yes'), you MUST look at the Recent Conversation Context to see what the bot just asked. For example, if the bot asked 'Which direction do the windows face in your bedroom?' and the user replies 'east', you MUST output a bedroom object with windows: east. DO NOT claim it is ambiguous! You MUST infer the missing entity from the bot's question.\n"
-            "The user may write in any language. Translate extracted values into concise English.\n"
+            "Task: Extract static plant and room setup data from the Latest User Message.\n"
+            "CRITICAL CONTEXT RULE: If the user answers with a fragment (like 'east', 'monthly', or 'yes'), you MUST look at Section 3 to see what the bot just asked. For example, if the bot asked 'Which direction do the windows face in your bedroom?' and the user replies 'east', you MUST output a bedroom object with windows: east. DO NOT claim it is ambiguous! You MUST infer the missing entity from the bot's question.\n"
+            "The user may write in any language. Translate extracted values into concise English.\n\n"
+            "Section 2: Information about room and elements in the room\n"
+            f"{setup_summary}\n\n"
+            "Section 3: Bot - User conversation last 10 sets of discussion\n"
+            f"{history_text}\n"
+            f"User: {incoming_text.strip()}\n\n"
+            "Section 4: Response Format\n"
             "Return only valid JSON with this shape:\n"
             "{\n"
             '  "clarification_question": "",\n'
@@ -945,8 +963,5 @@ class BotService:
             '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}]\n'
             "}\n"
             "Use empty strings for anything you cannot extract.\n"
-            "ONLY use `clarification_question` if the statement is completely bizarre or impossible to map to the conversation context. Asking questions is penalized if the answer is logically obvious from the context.\n\n"
-            f"Saved setup so far:\n{setup_summary}\n\n"
-            f"Recent Conversation Context:\n{history_text}\n\n"
-            f"Latest user message:\n{incoming_text.strip()}"
+            "ONLY use `clarification_question` if the statement is completely bizarre or impossible to map to Section 3. Asking questions is penalized if the answer is logically obvious from the context."
         )

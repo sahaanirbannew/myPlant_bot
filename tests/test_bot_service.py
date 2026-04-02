@@ -112,10 +112,10 @@ async def test_handle_message_skips_processing_notice(tmp_path: Path) -> None:
 
     assert telegram_client.sent_messages == [(12345, "plain answer")]
     assert gemini_client.prompts
-    assert 'You are "Anirban"' in gemini_client.prompts[0]
-    assert "Be concise and objective. Avoid being verbose." in gemini_client.prompts[0]
-    assert "reply in the same language as the user's message" in gemini_client.prompts[0].lower()
-    assert "User message:\nWhat is the weather?" in gemini_client.prompts[0]
+    assert 'Section 1: Generic Instructions' in gemini_client.prompts[0]
+    assert "Be concise, objective, and avoid verbosity." in gemini_client.prompts[0]
+    assert "reply in the same language" in gemini_client.prompts[0].lower()
+    assert "User: What is the weather?" in gemini_client.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -259,9 +259,9 @@ def test_setup_extraction_prompt_requires_english_normalization() -> None:
 
     assert "The user may write in any language." in prompt
     assert "Translate extracted values into concise English" in prompt
-    assert "MUST infer the missing entity from the bot" in prompt
+    assert "MUST infer the missing entity" in prompt
     assert '"clarification_question": ""' in prompt
-    assert "Latest user message:\nमेरे पौधे रसोई में हैं" in prompt
+    assert "User: मेरे पौधे रसोई में हैं" in prompt
 
 
 def test_persona_prompt_requires_clarification_instead_of_guessing() -> None:
@@ -282,10 +282,11 @@ def test_persona_prompt_requires_clarification_instead_of_guessing() -> None:
     prompt = bot_service._build_persona_prompt(
         user_text="My white-green pothos is by the window.",
         setup_summary="No saved plant setup information yet.",
+        history_text="No prior context.",
         follow_up_question="Which window direction is it near?",
     )
 
-    assert "German man in his mid-40s with a PhD in indoor plants" in prompt
-    assert "Do not pretend to know the exact species, variety, cultivar, room placement, or light setup" in prompt
-    assert "If something important is ambiguous, ask one short clarifying question instead of guessing." in prompt
-    assert "Which window direction is it near?" in prompt
+    assert "Section 1: Generic Instructions" in prompt
+    assert "End with this exact translated question: Which window direction is it near?" in prompt
+    assert "Section 3: Bot - User conversation last 10 sets of discussion" in prompt
+    assert "User: My white-green pothos is by the window." in prompt
