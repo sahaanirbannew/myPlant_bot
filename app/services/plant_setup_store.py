@@ -182,7 +182,7 @@ class PlantSetupStore:
                 return f"Which city is {room.get('name', 'that room')} in?"
             if not room.get("size_sqft"):
                 return f"About how big is {room.get('name', 'that room')} in square feet?"
-            if room.get("has_grow_light", "").lower() not in {"true", "false"}:
+            if not room.get("has_grow_light"):
                 return f"Does {room.get('name', 'that room')} have a grow light?"
 
         if not plants:
@@ -221,7 +221,7 @@ class PlantSetupStore:
             "type": str(room_payload.get("type", "")).strip(),
             "windows": str(room_payload.get("windows", "")).strip(),
             "size_sqft": str(room_payload.get("size_sqft", "")).strip(),
-            "has_grow_light": self._normalize_bool(room_payload.get("has_grow_light")),
+            "has_grow_light": str(room_payload.get("has_grow_light", "")).strip(),
             "city": str(room_payload.get("city", "")).strip(),
         }
         if existing_room is None:
@@ -283,16 +283,3 @@ class PlantSetupStore:
                 existing_plant[key] = value
         return existing_plant, True
 
-    def _normalize_bool(self, value: Any) -> str:
-        """Task: Normalize grow-light values into the stored lowercase boolean string format.
-        Input: A raw value from extracted room payloads.
-        Output: `true`, `false`, or an empty string.
-        Failures: No failure is expected.
-        """
-
-        lowered = str(value).strip().lower()
-        if lowered in {"true", "yes", "1"}:
-            return "true"
-        if lowered in {"false", "no", "0"}:
-            return "false"
-        return ""
