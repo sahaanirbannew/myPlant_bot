@@ -67,7 +67,7 @@ def test_profile_conversation_updates_override_soil_and_location(tmp_path: Path)
     assert "saved the watering profile for pothos" in final_response.lower()
     assert '"user_defined_watering_interval_days": 4' in memory_json
     assert "cocopeat" in plants_csv
-    assert "Mumbai" in rooms_csv
+    assert "indoor room" in rooms_csv.lower()
     assert "north" in rooms_csv.lower()
 
 

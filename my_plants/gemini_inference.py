@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -81,6 +82,46 @@ class GeminiInferenceClient:
         if not text:
             raise ValueError("Gemini returned an empty My Plants response.")
         return text
+
+    def extract_with_llm(self, message: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Task: Extract structured profile data from a conversational message into JSON format.
+        Input: The raw message and an optional context dictionary detailing the pending question.
+        Output: A JSON-decoded dictionary containing the extracted keys.
+        Failures: Returns an empty dictionary if Gemini fails or returns invalid JSON.
+        """
+        if not self.is_configured():
+            return {}
+        
+        prompt = "You are a data extraction AI. Extract the requested information from the message as raw JSON only, without markdown wrapping.\n"
+        if context and context.get("pending_question") == "soil_type":
+            prompt += "Extract the soil composition mentioned. Return JSON exactly like: {\"soil_type\": \"extracted text\"}.\n"
+        elif context and context.get("pending_question") == "watering_frequency":
+            prompt += "Extract the watering frequency and convert it to an integer number of days. Return JSON exactly like: {\"days\": 7}.\n"
+        elif context and context.get("pending_question") == "plant_location":
+            prompt += "Extract the room and any window placement. Return JSON exactly like: {\"room\": \"extracted room\", \"windows\": \"extracted windows\"}.\n"
+        else:
+            prompt += "Extract any relevant plant context. Return JSON.\n"
+            
+        prompt += f"\nMessage: {message}\n"
+        
+        url = f"{self.api_base_url}/models/{self.model}:generateContent"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json"}
+        }
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, params={"key": self.api_key}, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                
+            text = self._extract_text(data)
+            if not text:
+                return {}
+            return json.loads(text)
+        except Exception:
+            return {}
 
     def _extract_text(self, payload: dict[str, Any]) -> str:
         """Task: Extract plain text from a Gemini API response payload.

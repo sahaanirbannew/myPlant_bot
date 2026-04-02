@@ -34,105 +34,42 @@ class ConversationAgent:
         user_memory: dict[str, Any],
         timestamp: str,
     ) -> dict[str, Any]:
-        """Task: Start a new profile-collection flow for a plant that lacks scheduler details.
-        Input: The target plant row, current user memory, and current timestamp.
-        Output: Updated memory state and the first follow-up question.
-        Failures: No failure is expected.
-        """
+        """Task: Start a new profile-collection flow for a plant that lacks scheduler details. Return state."""
+        question_key = self._next_missing_field(plant=plant, user_memory=user_memory)
+        if not question_key:
+            return {"conversation_state": None, "response": f"I added {plant['name']}."}
 
-        pending_question = {
+        state = {
             "plant_id": plant["id"],
-            "question_key": self._next_missing_field(plant=plant, user_memory=user_memory),
-            "started_at": timestamp,
+            "pending_question": question_key,
+            "question_context": question_key,
+            "timestamp": timestamp,
         }
-        updated_memory = dict(user_memory)
-        updated_memory["pending_question"] = pending_question
         return {
-            "memory": updated_memory,
-            "response": f"I added {plant['name']}. {self._question_text(pending_question['question_key'], plant['name'])}",
+            "conversation_state": state,
+            "response": f"I added {plant['name']}. {self._question_text(question_key, plant['name'])}",
         }
 
-    def handle_pending_question(
+    def get_next_question_state(
         self,
-        user_id: str,
         plant: dict[str, str],
-        rooms: list[dict[str, str]],
         user_memory: dict[str, Any],
-        message: str,
         timestamp: str,
-    ) -> dict[str, Any]:
-        """Task: Process an answer to the current profile question and ask the next one if needed.
-        Input: User id, plant row, rooms, user memory, raw answer text, and current timestamp.
-        Output: A dictionary describing whether the pending question was handled plus updated state and reply text.
-        Failures: Ambiguous answers produce a clarification response without applying updates.
-        """
+    ) -> dict[str, Any] | None:
+        """Task: Get the conversation state and text for the next missing profile question."""
+        question_key = self._next_missing_field(plant=plant, user_memory=user_memory)
+        if not question_key:
+            return None
 
-        pending_question = user_memory.get("pending_question")
-        if not pending_question or pending_question.get("plant_id") != plant["id"]:
-            return {"handled": False}
-
-        question_key = pending_question["question_key"]
-        parser = {
-            "watering_frequency": self._parse_watering_frequency,
-            "soil_type": self._parse_soil_type,
-            "plant_location": self._parse_location,
-        }[question_key]
-        parsed_value = parser(message)
-        if not parsed_value:
-            return {
-                "handled": True,
-                "memory": user_memory,
-                "plant": plant,
-                "rooms": rooms,
-                "response": self._clarification_text(question_key, plant["name"]),
-            }
-
-        updated_memory = dict(user_memory)
-        updated_plant = dict(plant)
-        updated_rooms = list(rooms)
-        preferences = dict(updated_memory.get("plant_preferences", {}))
-        plant_preferences = dict(preferences.get(plant["id"], {}))
-
-        if question_key == "watering_frequency":
-            plant_preferences["user_defined_watering_interval_days"] = parsed_value["days"]
-
-        if question_key == "soil_type":
-            updated_plant["soil_type"] = parsed_value["soil_type"]
-
-        if question_key == "plant_location":
-            room = self._upsert_room(
-                user_id=user_id,
-                rooms=updated_rooms,
-                location_payload=parsed_value,
-            )
-            updated_plant["room_id"] = room["id"]
-            plant_preferences["location_confirmed"] = True
-
-        preferences[plant["id"]] = plant_preferences
-        updated_memory["plant_preferences"] = preferences
-
-        next_question_key = self._next_missing_field(plant=updated_plant, user_memory=updated_memory)
-        if next_question_key:
-            updated_memory["pending_question"] = {
-                "plant_id": updated_plant["id"],
-                "question_key": next_question_key,
-                "started_at": timestamp,
-            }
-            return {
-                "handled": True,
-                "memory": updated_memory,
-                "plant": updated_plant,
-                "rooms": updated_rooms,
-                "response": f"Got it for {updated_plant['name']}. {self._question_text(next_question_key, updated_plant['name'])}",
-            }
-
-        updated_memory.pop("pending_question", None)
+        state = {
+            "plant_id": plant["id"],
+            "pending_question": question_key,
+            "question_context": question_key,
+            "timestamp": timestamp,
+        }
         return {
-            "handled": True,
-            "memory": updated_memory,
-            "plant": updated_plant,
-            "rooms": updated_rooms,
-            "response": f"Thanks, I saved the watering profile for {updated_plant['name']}.",
+            "conversation_state": state,
+            "response": f"Got it for {plant['name']}. {self._question_text(question_key, plant['name'])}",
         }
 
     def _next_missing_field(self, plant: dict[str, str], user_memory: dict[str, Any]) -> str | None:

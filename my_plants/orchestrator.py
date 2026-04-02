@@ -72,8 +72,86 @@ class Orchestrator:
         if self._is_reminder_query(message):
             return self.scan_due_plants(user_id=user_id, now=now)
 
+        state = self.file_manager.load_conversation_state(user_id)
         user_memory = self.file_manager.read_json(self.file_manager.user_memory_path(user_id), default={})
         plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_id))
+
+        if state and state.get("pending_question"):
+            lowered = message.lower()
+            if any(k in lowered for k in ["bought", "new plant", "also", "another"]):
+                self.file_manager.clear_conversation_state(user_id)
+                state = None
+
+        if state and state.get("pending_question"):
+            plant_id = state["plant_id"]
+            pending_question = state["pending_question"]
+            
+            plant = next((p for p in plants if p["id"] == plant_id), None)
+            if not plant:
+                self.file_manager.clear_conversation_state(user_id)
+            else:
+                extracted = self.response_generator.gemini_client.extract_with_llm(
+                    message=message, 
+                    context={"pending_question": pending_question, "plant_id": plant_id}
+                )
+                
+                if not extracted:
+                    return f"Just to confirm, are we still talking about your {plant['name']}?"
+
+                if pending_question == "soil_type" and extracted.get("soil_type"):
+                    plant["soil_type"] = extracted["soil_type"]
+                    self._persist_plant(user_id, plant)
+                elif pending_question == "watering_frequency" and extracted.get("days"):
+                    preferences = user_memory.get("plant_preferences", {})
+                    plant_prefs = preferences.get(plant_id, {})
+                    plant_prefs["user_defined_watering_interval_days"] = extracted["days"]
+                    preferences[plant_id] = plant_prefs
+                    user_memory["plant_preferences"] = preferences
+                    self._write_memory(user_id, user_memory)
+                elif pending_question == "plant_location" and extracted.get("room"):
+                    rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_id))
+                    room_name = extracted["room"]
+                    room = next((r for r in rooms if r["name"].lower() == room_name.lower()), None)
+                    if not room:
+                        room = {
+                            "id": make_id("room"),
+                            "user_id": user_id,
+                            "name": room_name.title(),
+                            "type": "indoor",
+                            "windows": extracted.get("windows", ""),
+                            "size_sqft": "",
+                            "has_grow_light": "",
+                            "city": "",
+                        }
+                        rooms.append(room)
+                    else:
+                        if extracted.get("windows"):
+                            room["windows"] = extracted["windows"]
+                    plant["room_id"] = room["id"]
+                    self._persist_plant(user_id, plant)
+                    self._persist_rooms(user_id, rooms)
+                    
+                    preferences = user_memory.get("plant_preferences", {})
+                    plant_prefs = preferences.get(plant_id, {})
+                    plant_prefs["location_confirmed"] = True
+                    preferences[plant_id] = plant_prefs
+                    user_memory["plant_preferences"] = preferences
+                    self._write_memory(user_id, user_memory)
+                else:
+                    return f"Just to confirm, are we still talking about your {plant['name']}?"
+
+                next_state_data = self.conversation_agent.get_next_question_state(plant, user_memory, timestamp)
+                
+                memory_payload = {**user_memory, "last_used_plant_id": plant["id"], "updated_at": timestamp}
+                self._write_memory(user_id, memory_payload)
+                
+                if next_state_data:
+                    self.file_manager.save_conversation_state(user_id, next_state_data["conversation_state"])
+                    return next_state_data["response"]
+
+                self.file_manager.clear_conversation_state(user_id)
+                return f"Thanks, I saved the watering profile for {plant['name']}."
+
         resolution = self.plant_resolver.resolve(
             user_id=user_id,
             message=message,
@@ -84,27 +162,16 @@ class Orchestrator:
 
         if resolution["needs_clarification"]:
             self._write_memory(user_id=user_id, payload={**user_memory, "updated_at": timestamp})
+            prev_plant_id = user_memory.get("last_used_plant_id")
+            prev_plant = next((p for p in plants if p["id"] == prev_plant_id), None) if prev_plant_id else None
+            if prev_plant:
+                return f"Just to confirm, are we still talking about your {prev_plant['name']}?"
             return "I’m not quite sure which plant you mean yet. Tell me the plant name, or say you brought one home 🌿"
 
         plant = resolution["plant"]
         if resolution["created"]:
             plants.append(plant)
-            self.file_manager.write_csv(self.file_manager.plants_csv_path(user_id), plants, PLANT_HEADERS)
-
-        rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_id))
-        conversation_result = self.conversation_agent.handle_pending_question(
-            user_id=user_id,
-            plant=plant,
-            rooms=rooms,
-            user_memory=user_memory,
-            message=message,
-            timestamp=timestamp,
-        )
-        if conversation_result.get("handled"):
-            self._persist_rooms(user_id=user_id, rooms=conversation_result.get("rooms", rooms))
-            self._persist_plant(user_id=user_id, plant=conversation_result.get("plant", plant))
-            self._write_memory(user_id=user_id, payload=conversation_result["memory"])
-            return conversation_result["response"]
+            self._persist_plant(user_id, plant)
 
         extraction = self.memory_extractor.extract(message=message, timestamp=timestamp)
         plant = self._apply_room_facts(user_id=user_id, plant=plant, room_facts=extraction["room_facts"])
@@ -117,13 +184,17 @@ class Orchestrator:
             "last_message": message,
             "updated_at": timestamp,
         }
+        
         if resolution["created"]:
             onboarding_result = self.conversation_agent.begin_profile_collection(
                 plant=plant,
                 user_memory=memory_payload,
                 timestamp=timestamp,
             )
-            self._write_memory(user_id=user_id, payload=onboarding_result["memory"])
+            self._write_memory(user_id=user_id, payload=memory_payload)
+            state = onboarding_result.get("conversation_state")
+            if state:
+                self.file_manager.save_conversation_state(user_id, state)
             return onboarding_result["response"]
 
         self._write_memory(user_id=user_id, payload=memory_payload)

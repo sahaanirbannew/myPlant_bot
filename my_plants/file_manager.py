@@ -131,6 +131,27 @@ class FileManager:
     def raw_log_path(self, user_id: str) -> Path:
         return self.user_dir(user_id) / "raw.log"
 
+    def conversation_state_path(self, user_id: str) -> Path:
+        return self.user_dir(user_id) / "conversation_state.json"
+
+    def load_conversation_state(self, user_id: str) -> dict[str, Any] | None:
+        """Task: Load the active conversation state. Returns None if it doesn't exist."""
+        path = self.conversation_state_path(user_id)
+        if not path.exists():
+            return None
+        state = self.read_json(path, default={})
+        return state if state else None
+
+    def save_conversation_state(self, user_id: str, state: dict[str, Any]) -> None:
+        """Task: Write the conversation state payload to JSON."""
+        self.write_json(self.conversation_state_path(user_id), state)
+
+    def clear_conversation_state(self, user_id: str) -> None:
+        """Task: Delete the conversation state file to clear the active flow."""
+        path = self.conversation_state_path(user_id)
+        if path.exists():
+            path.unlink()
+
     def ensure_workspace(self) -> None:
         """Task: Create global required directory and seed-file structure when absent.
         Input: No direct arguments; uses the configured base directory.
