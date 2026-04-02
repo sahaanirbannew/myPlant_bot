@@ -12,6 +12,11 @@ from app.models import TelegramMessage
 from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
 from app.services.plant_setup_store import PlantSetupStore
+from pathlib import Path
+from my_plants.file_manager import FileManager
+from my_plants.context_builder import ContextBuilder
+from my_plants.time_series_analyzer import TimeSeriesAnalyzer
+from my_plants.watering_scheduler import WateringScheduler
 from app.services.session import SessionManager
 from app.services.session_tracker import SessionTracker
 from app.services.storage import UserKeyStore
@@ -922,7 +927,28 @@ class BotService:
                     user_key = self.key_store.fetch_latest_key(user_id)
                     gemini_api_key = user_key.gemini_api_key if user_key else None
                     if gemini_api_key:
-                        gemini_prompt = "You are Anirban, German, 45, precise and concise plant PhD. Send a very brief, friendly evening check-in to see how the user's plants are doing today. No questions, just a concise greeting and check-in statement. Maximum 2 sentences. To the point."
+                        # --- NEW: Calculate Due Plants ---
+                        fm = FileManager(Path(__file__).resolve().parents[2] / "my_plants")
+                        cb = ContextBuilder(fm)
+                        ts = TimeSeriesAnalyzer()
+                        ws = WateringScheduler()
+                        
+                        due_plants = []
+                        plants = [row for row in fm.read_csv(fm.plants_csv_path(str(user_id))) if row["user_id"] == str(user_id)]
+                        now_ts_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                        for plant in plants:
+                            context = cb.build(user_id=str(user_id), plant_id=plant["id"])
+                            analysis = ts.analyze(events=context["all_plant_events"], now_timestamp=now_ts_str)
+                            schedule = ws.compute(context=context, analysis=analysis)
+                            if schedule["reminder_due"]:
+                                due_plants.append(f"{plant['name']} (overdue: {schedule['days_since_last_watered']} days)")
+                        
+                        if due_plants:
+                            due_str = ", ".join(due_plants)
+                            gemini_prompt = f"You are Anirban, German, 45, precise and concise plant PhD. Send a proactive evening check-in, heavily prioritizing a WATERING ALARM for these plants which are currently overdue: {due_str}. Tell the user to water them now. Maximum 2 sentences. Professional, firm, and to the point."
+                        else:
+                            gemini_prompt = "You are Anirban, German, 45, precise and concise plant PhD. Send a very brief, friendly evening check-in to see how the user's plants are doing today. No questions, just a concise greeting and check-in statement. Maximum 2 sentences. To the point."
+                        
                         follow_up_question = await self.gemini_client.generate_text(
                             prompt=gemini_prompt,
                             api_key=gemini_api_key,
