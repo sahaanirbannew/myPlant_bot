@@ -74,15 +74,18 @@ The workflow is intentionally idempotent:
 - `pip install -r requirements.txt` converges the host to the declared dependency set
 - `systemctl restart` cleanly refreshes the running process each deploy
 
-Required GitHub Secrets:
+Required GitHub Actions variables:
 
 - `EC2_HOST`
 - `EC2_USER`
-- `EC2_SSH_PRIVATE_KEY`
-- `EC2_KNOWN_HOSTS`
 - `EC2_APP_DIR`
-- `EC2_ENV_FILE_BASE64`
 - `EC2_GITHUB_REPOSITORY_URL`
+- `EC2_KNOWN_HOSTS`
+
+Required GitHub Secrets:
+
+- `EC2_SSH_PRIVATE_KEY`
+- `EC2_ENV_FILE_BASE64`
 
 Helpful secret preparation commands:
 

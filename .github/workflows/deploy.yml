@@ -32,16 +32,16 @@ jobs:
       - name: Configure known_hosts
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.EC2_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          printf '%s\n' "${{ vars.EC2_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
 
       # Execute the deployment remotely so the EC2 host always pulls and runs the latest code itself.
       - name: Deploy application on EC2
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          APP_DIR: ${{ secrets.EC2_APP_DIR }}
+          EC2_HOST: ${{ vars.EC2_HOST }}
+          EC2_USER: ${{ vars.EC2_USER }}
+          APP_DIR: ${{ vars.EC2_APP_DIR }}
           APP_ENV_FILE_BASE64: ${{ secrets.EC2_ENV_FILE_BASE64 }}
-          GITHUB_REPOSITORY_URL: ${{ secrets.EC2_GITHUB_REPOSITORY_URL }}
+          GITHUB_REPOSITORY_URL: ${{ vars.EC2_GITHUB_REPOSITORY_URL }}
           GITHUB_REPOSITORY_BRANCH: main
         run: |
           ssh "${EC2_USER}@${EC2_HOST}" \

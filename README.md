@@ -73,15 +73,18 @@ Every push to `main` runs `.github/workflows/deploy.yml`, which:
 - installs dependencies from `requirements.txt`
 - restarts the `systemd` service
 
-## Required GitHub Secrets
+## Required GitHub Actions variables
 
 - `EC2_HOST`: Public EC2 hostname or IP address
-- `EC2_USER`: SSH user, usually `ubuntu`
+- `EC2_USER`: SSH user, for your instance `ec2-user`
+- `EC2_APP_DIR`: Remote deployment directory, for example `/home/ec2-user/myPlant_bot`
+- `EC2_GITHUB_REPOSITORY_URL`: Git clone URL reachable from EC2, for example `https://github.com/sahaanirbannew/myPlant_bot.git`
+- `EC2_KNOWN_HOSTS`: Pinned `known_hosts` entry for the EC2 server
+
+## Required GitHub Secrets
+
 - `EC2_SSH_PRIVATE_KEY`: Private key matching the EC2 authorized key
-- `EC2_KNOWN_HOSTS`: Pinned known_hosts entry for the EC2 server
-- `EC2_APP_DIR`: Remote deployment directory, for example `/opt/myplant-bot`
 - `EC2_ENV_FILE_BASE64`: Base64-encoded production `.env` content
-- `EC2_GITHUB_REPOSITORY_URL`: Git clone URL reachable from EC2
 
 ## Security note
 
