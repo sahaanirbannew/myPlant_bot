@@ -32,7 +32,15 @@ install_packages() {
 }
 
 echo "[1/6] Installing OS packages..."
-install_packages git curl python3
+if ! command -v git >/dev/null 2>&1; then
+  install_packages git
+fi
+if ! command -v curl >/dev/null 2>&1; then
+  install_packages curl
+fi
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+  install_packages python3
+fi
 
 echo "[2/6] Creating application directory..."
 sudo mkdir -p "${APP_DIR}"
