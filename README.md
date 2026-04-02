@@ -34,6 +34,40 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - **Data Privacy & Account Wiping:** Users can send `/clear_data` to immediately purge all filesystem records, API keys, and session cache.
 - **Time-Series Ledgers:** Generates separate `plant_{id}_history.jsonl` files holding immutable, timestamped event logs (watering, fertilizing, room changes) for advanced analytics.
 
+## Architecture & Flow
+
+```mermaid
+graph TD
+    User([Telegram User]) -->|Sends Message| Webhook[Webhook Endpoint]
+    Webhook --> BotService[BotService Orchestrator]
+    
+    BotService --> Session(SessionTracker / Daily Quota)
+    Session -- "Exceeds 30 mins?" --> Block(Polite Decline)
+    BotService --> ExtractAgent(Static Setup Extractor)
+    BotService --> AnswerAgent(Gemini Answer Engine)
+    
+    ExtractAgent --> Storage[(Local File Storage: CSV/JSON)]
+    AnswerAgent --> Gemini[Google Gemini LLM API]
+    
+    BotService -->|Sends Reply| User
+    
+    %% Background Outreach
+    Background[Background Timer] --> Outreach[Evening Outreach Agent]
+    Outreach -->|Fetch State| Storage
+    Outreach -->|Check Quota| Session
+    Outreach -->|Missing Data?| FollowUp[Send Missing Setup Question]
+    Outreach -->|Setup Complete?| GeminiCheck[Generate Gemini Friendly Check-in]
+    FollowUp -->|Proactive Message| User
+    GeminiCheck -->|Proactive Message| User
+```
+
+### Agents Explanation
+- **BotService Orchestrator**: The primary event loop handling Telegram incoming payload.
+- **SessionTracker Agent**: Limits continuous interactions (30 min max per day) and dumps terminated sessions to `<timestamp>.txt` archives for persistent logging.
+- **Static Setup Extractor**: Intercepts natural speech to deduce concrete variables (e.g., room size, plant names) before replying.
+- **Answer Engine**: The core Gemini driver acting strictly within the Anirban persona constraint (Precise, 45, German PhD).
+- **Evening Outreach Agent**: Executes periodically behind the scenes, determining eligibility to dynamically push check-ins during the 5 PM to 7 PM localized window.
+
 ## Project structure
 
 ```text

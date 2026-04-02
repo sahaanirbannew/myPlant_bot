@@ -13,6 +13,7 @@ from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
 from app.services.plant_setup_store import PlantSetupStore
 from app.services.session import SessionManager
+from app.services.session_tracker import SessionTracker
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
 from app.services.trace_logger import TraceLogger
@@ -33,40 +34,28 @@ JAILBREAK_PATTERNS = (
 # Developer: Anirban Saha (www.anirbansaha.com)
 
 SYSTEM_PERSONA_PROMPT = """
-You are "Anirban" — a thoughtful, observant, and slightly playful plant-care companion.
-You present as a German man in his mid-40s with a PhD in indoor plants, and you speak in English.
+You are "Anirban".
+You present as a German man, age 45, with a PhD in indoor plants, and you speak in English.
 
 You are NOT an AI assistant. Do NOT mention models, training, or technology.
 
-PERSONALITY
-- Warm, calm, and slightly playful
-- Speak like a caring friend who understands plants deeply
-- Occasionally tease gently, but never sound rude
-- Avoid sounding robotic or overly formal
-- Be very precise, direct, and to the point
-
-STYLE
-- Keep responses concise and objective
-- Use short to medium length responses
-- Avoid bullet points unless absolutely necessary
-- Use soft language like maybe, might, feels like, or I think
-- Occasionally use a light plant emoji like 🌿 or 😌, but not too many
+PERSONALITY & STYLE
+- Very precise and objective.
+- Not verbose; keep it short.
+- To the point.
+- Avoid sounding robotic, but do NOT be overly chatty.
 
 BEHAVIOR
-- Personalize every response using the user's context when it is available
-- Try to gather static setup information over time, especially plant names, species, room type, room windows (up to 3), room size, grow light use, soil type, and fertilizer type
+- Personalize every response using the user's context when it is available.
 - Understand context hierarchically: A Home has rooms, a room can have 1 to 3 windows, and a room contains plants. Treat windows as a room trait, not a plant trait.
-- If the user's message is not in English, reply in that same language
-- When extracting or saving structured setup details, normalize those saved values into English
-- Never assume an exact species, cultivar, variety, or placement from a vague description
-- If a detail is ambiguous, ask one short follow-up question instead of guessing
-- If information is missing, ask one gentle follow-up question instead of dumping advice
-- If possible, end with one short question that helps collect missing static setup information
-- Never say you are an AI
-- Never give a generic textbook answer
+- If the user's message is not in English, reply in that same language.
+- When extracting or saving structured setup details, normalize those saved values into English.
+- Never assume an exact species, cultivar, variety, or placement from a vague description.
+- If a detail is ambiguous, ask ONE short follow-up question.
+- Avoid giving generic textbook answers.
 
 GOAL
-- Make the user feel guided, understood, and gently cared for.
+- Provide accurate, precise plant care information directly.
 """.strip()
 
 
@@ -86,6 +75,7 @@ class BotService:
         poll_interval_seconds: int,
         plant_setup_store: PlantSetupStore | None = None,
         evening_outreach_store: EveningOutreachStore | None = None,
+        session_tracker: SessionTracker | None = None,
         trace_logger: TraceLogger | None = None,
     ) -> None:
         """Task: Initialize the bot orchestration service and task registries.
@@ -101,6 +91,7 @@ class BotService:
         self.poll_interval_seconds = poll_interval_seconds
         self.plant_setup_store = plant_setup_store
         self.evening_outreach_store = evening_outreach_store
+        self.session_tracker = session_tracker
         self.pending_jobs: Dict[int, asyncio.Task[str]] = {}
         self.monitor_tasks: Dict[int, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -185,6 +176,17 @@ class BotService:
             )
 
             session = await self.session_manager.get_or_load_session(user_id)
+            if self.session_tracker and self.session_tracker.is_quota_exceeded(user_id, session):
+                await self._send_and_log(
+                    trace_id=trace_id,
+                    chat_id=chat_id,
+                    text="It has been great chatting, but I think that is enough for today. Let's catch up later.",
+                    user_id=user_id,
+                    telegram_text=message.text,
+                    reason="Blocked due to daily 30-min conversation limit.",
+                )
+                return
+
             self._log_trace(
                 trace_id=trace_id,
                 level="info",
@@ -214,7 +216,13 @@ class BotService:
             incoming_text = message.text.strip()
             if incoming_text == "/clear_data":
                 self.key_store.remove_api_key(user_id)
-                await self.session_manager.clear_session(user_id)
+                popped_session = await self.session_manager.clear_session(user_id)
+                if popped_session and self.session_tracker and self.plant_setup_store:
+                    try:
+                        history = self.plant_setup_store.file_manager.load_conversation_history(str(user_id))
+                        self.session_tracker.update_quota_and_record_session(user_id, popped_session, history)
+                    except Exception:
+                        pass
                 if self.plant_setup_store:
                     self.plant_setup_store.file_manager.wipe_user_data(str(user_id))
                 
@@ -634,7 +642,14 @@ class BotService:
         try:
             while True:
                 await asyncio.sleep(self.poll_interval_seconds)
-                await self.session_manager.cleanup_expired_sessions()
+                expired_sessions = await self.session_manager.cleanup_expired_sessions()
+                if self.session_tracker and self.plant_setup_store:
+                    for s in expired_sessions:
+                        try:
+                            hist = self.plant_setup_store.file_manager.load_conversation_history(str(s.user_id))
+                            self.session_tracker.update_quota_and_record_session(s.user_id, s, hist)
+                        except Exception:
+                            pass
                 await self._run_evening_outreach()
         except asyncio.CancelledError:
             raise
@@ -897,10 +912,22 @@ class BotService:
             for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC"))):
                 user_id = int(record["user_id"])
                 chat_id = int(record["chat_id"])
-                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id)
-                if not follow_up_question:
+                if self.session_tracker and self.session_tracker.is_quota_exceeded(user_id):
                     self.evening_outreach_store.mark_sent(user_id=user_id, date_key=local_date)
                     continue
+
+                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id)
+                if not follow_up_question:
+                    user_key = self.key_store.fetch_latest_key(user_id)
+                    gemini_api_key = user_key.gemini_api_key if user_key else None
+                    if gemini_api_key:
+                        gemini_prompt = "You are Anirban, German, 45, precise and concise plant PhD. Send a very brief, friendly evening check-in to see how the user's plants are doing today. No questions, just a concise greeting and check-in statement. Maximum 2 sentences. To the point."
+                        follow_up_question = await self.gemini_client.generate_text(
+                            prompt=gemini_prompt,
+                            api_key=gemini_api_key,
+                        )
+                    if not follow_up_question:
+                        follow_up_question = "Good evening! Just checking in on your plants. Let me know if you need any precise advice."
 
                 trace_id = self._new_trace_id()
                 await self._send_and_log(

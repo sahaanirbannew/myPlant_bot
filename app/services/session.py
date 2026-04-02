@@ -21,6 +21,7 @@ class UserSession:
     user_id: int
     gemini_api_key: Optional[str]
     last_active_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    first_active_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     awaiting_setup_key: bool = False
 
 
@@ -88,24 +89,25 @@ class SessionManager:
             session.awaiting_setup_key = False
             session.last_active_at = datetime.now(timezone.utc)
 
-    async def clear_session(self, user_id: int) -> None:
+    async def clear_session(self, user_id: int) -> UserSession | None:
         """Task: Remove all cached session data including Gemini API key from active memory for a user.
         Input: The user's numeric Telegram id.
-        Output: None; the user session is cleared or removed from the cache.
+        Output: The removed user session or None.
         Failures: No failure is expected; missing sessions are ignored.
         """
 
         async with self._lock:
-            self._sessions.pop(user_id, None)
+            return self._sessions.pop(user_id, None)
 
-    async def cleanup_expired_sessions(self) -> None:
+    async def cleanup_expired_sessions(self) -> list[UserSession]:
         """Task: Remove sessions that have been inactive longer than the configured timeout.
         Input: No direct arguments; uses the current UTC time and configured timeout.
-        Output: None; expired sessions are removed from memory.
+        Output: A list of expired UserSessions that were removed from memory.
         Failures: No failure is expected unless the internal session map is corrupted.
         """
 
         expiration_threshold = datetime.now(timezone.utc) - timedelta(seconds=self.timeout_seconds)
+        expired_sessions = []
         async with self._lock:
             expired_user_ids = [
                 user_id
@@ -113,5 +115,8 @@ class SessionManager:
                 if session.last_active_at < expiration_threshold
             ]
             for user_id in expired_user_ids:
-                self._sessions.pop(user_id, None)
+                session = self._sessions.pop(user_id, None)
+                if session is not None:
+                    expired_sessions.append(session)
+        return expired_sessions
 

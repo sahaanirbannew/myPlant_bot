@@ -15,6 +15,7 @@ from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
 from app.services.plant_setup_store import PlantSetupStore
 from app.services.session import SessionManager
+from app.services.session_tracker import SessionTracker
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
 from app.services.trace_logger import TraceLogger
@@ -31,10 +32,15 @@ evening_outreach_store = EveningOutreachStore(
     registry_path=Path("data/telegram_user_registry.json"),
     state_path=Path("data/evening_outreach_state.json"),
 )
+session_tracker = SessionTracker(
+    quota_path=Path("data/daily_quota.json"),
+    sessions_dir=Path("data/sessions")
+)
 bot_service = BotService(
     telegram_client=telegram_client,
     gemini_client=gemini_client,
     session_manager=session_manager,
+    session_tracker=session_tracker,
     key_store=key_store,
     poll_interval_seconds=settings.poll_interval_seconds,
     plant_setup_store=plant_setup_store,
