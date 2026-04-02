@@ -935,22 +935,17 @@ class BotService:
 
         return (
             "You are a strict backend data extraction system.\n"
-            "Extract static plant setup information from the user's latest message.\n"
-            "Crucially, if the latest message lacks a room name or plant name (e.g., 'east', 'every 5 days'), look at the Recent Conversation Context to infer exactly which room or plant the user is answering about!\n"
-            "Be objective and concise.\n"
-            "The user may write in any language.\n"
-            "Understand the message in that language, but translate every extracted value into concise English before returning JSON.\n"
-            "Do not assume facts arbitrarily, but DO heavily use the Recent Conversation Context to resolve missing nouns (e.g., if the bot just asked 'Which direction do windows face in bedroom?', and user says 'east', extract bedroom: east).\n"
-            "If the message sounds descriptive rather than botanical, do not invent a plant variety.\n"
-            "Example: 'white-green pothos' is not enough to infer the exact variety.\n"
+            "Task: Extract static plant and room setup data from the Latest User Message.\n\n"
+            "CRITICAL CONTEXT RULE: If the user answers with a fragment (like 'east', 'monthly', or 'yes'), you MUST look at the Recent Conversation Context to see what the bot just asked. For example, if the bot asked 'Which direction do the windows face in your bedroom?' and the user replies 'east', you MUST output a bedroom object with windows: east. DO NOT claim it is ambiguous! You MUST infer the missing entity from the bot's question.\n"
+            "The user may write in any language. Translate extracted values into concise English.\n"
             "Return only valid JSON with this shape:\n"
             "{\n"
             '  "clarification_question": "",\n'
             '  "rooms": [{"name":"","type":"","windows":"","size_sqft":"","has_grow_light":"","city":""}],\n'
             '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}]\n'
             "}\n"
-            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n"
-            "If there is an ambiguity, set `clarification_question` to one short English question that would resolve it. Otherwise leave it empty.\n\n"
+            "Use empty strings for anything you cannot extract.\n"
+            "ONLY use `clarification_question` if the statement is completely bizarre or impossible to map to the conversation context. Asking questions is penalized if the answer is logically obvious from the context.\n\n"
             f"Saved setup so far:\n{setup_summary}\n\n"
             f"Recent Conversation Context:\n{history_text}\n\n"
             f"Latest user message:\n{incoming_text.strip()}"

@@ -258,9 +258,8 @@ def test_setup_extraction_prompt_requires_english_normalization() -> None:
     )
 
     assert "The user may write in any language." in prompt
-    assert "translate every extracted value into concise English before returning JSON" in prompt
-    assert "Do not assume facts arbitrarily" in prompt
-    assert "white-green pothos" in prompt
+    assert "Translate extracted values into concise English" in prompt
+    assert "MUST infer the missing entity from the bot" in prompt
     assert '"clarification_question": ""' in prompt
     assert "Latest user message:\nमेरे पौधे रसोई में हैं" in prompt
 
