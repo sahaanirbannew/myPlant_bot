@@ -254,6 +254,7 @@ def test_setup_extraction_prompt_requires_english_normalization() -> None:
     prompt = bot_service._build_setup_extraction_prompt(
         incoming_text="मेरे पौधे रसोई में हैं",
         setup_summary="No saved plant setup information yet.",
+        history_text="No prior context.",
     )
 
     assert "The user may write in any language." in prompt

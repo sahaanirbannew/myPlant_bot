@@ -812,7 +812,20 @@ class BotService:
             return ""
 
         setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
-        prompt = self._build_setup_extraction_prompt(incoming_text=incoming_text, setup_summary=setup_summary)
+        
+        history_text = "No prior context."
+        try:
+            history = self.plant_setup_store.file_manager.load_conversation_history(str(user_id))
+            if history:
+                history_text = "\n".join(f"{h['role'].capitalize()}: {h['message']}" for h in history[-6:])
+        except Exception:
+            pass
+
+        prompt = self._build_setup_extraction_prompt(
+            incoming_text=incoming_text, 
+            setup_summary=setup_summary, 
+            history_text=history_text
+        )
 
         try:
             raw_payload = await self.gemini_client.ask_question(api_key=api_key, prompt=prompt)
@@ -913,7 +926,7 @@ class BotService:
                 error=str(exc),
             )
 
-    def _build_setup_extraction_prompt(self, incoming_text: str, setup_summary: str) -> str:
+    def _build_setup_extraction_prompt(self, incoming_text: str, setup_summary: str, history_text: str) -> str:
         """Task: Build the structured extraction prompt used to infer static plant setup details from Telegram text.
         Input: The latest user message text and the saved setup summary for that user.
         Output: A Gemini prompt string that requests English-normalized JSON output.
@@ -938,5 +951,6 @@ class BotService:
             "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n"
             "If there is an ambiguity, set `clarification_question` to one short English question that would resolve it. Otherwise leave it empty.\n\n"
             f"Saved setup so far:\n{setup_summary}\n\n"
+            f"Recent Conversation Context:\n{history_text}\n\n"
             f"Latest user message:\n{incoming_text.strip()}"
         )
