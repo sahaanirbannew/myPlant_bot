@@ -13,11 +13,15 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Background Gemini question answering with 5 retries and 2-second backoff, without an interim status message
 - Telegram replies are normalized to plain text by removing `**` bold markers from model output
 - Unauthenticated `/dashboard` page for Telegram traces, agent inputs, agent outputs, info logs, and errors
-- Gemini responses are now instructed to stay concise and objective
-- Static plant setup details inferred from Telegram conversations are saved into the existing `my_plants` CSV files
-- Proactive setup questions can be sent between 5 PM and 7 PM at a deterministic random time per user per day
-- Non-English user messages are understood in place, setup data is normalized into English for storage, and replies stay in the user's language
-- Ambiguous setup details are treated as unknown facts, so the bot asks one short clarifying question instead of guessing species, varieties, or placement
+- Generative answers stay strictly concise and conversational using the "Anirban" core persona
+- Robust JSON payload extraction layer for plant setup mapped to CSV without persona-bleed
+- Sliding 10-message conversational context history injected dynamically to resolve fragmentary pronouns and answers
+- Centralized 4-section structural prompt architecture deployed uniformly across JSON extraction and user-facing completion engines
+- Contextually self-aware bot that infers nouns logically from prior bot questions rather than looping with clarification queries
+- **`/clear_data`** privacy command cleanly erases API keys, wipes session data, and drops all recursive storage isolated files
+- Plant Time-Series Ledgers create scalable, immutable, timestamped `.jsonl` sequences of life events per plant
+- Proactive setup questions can occur naturally via evening localized time windows
+- Non-English payloads are handled seamlessly, normalized into internal English objects, and replied to in language
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 - Separate `my_plants/` file-backed backend using CSV, JSON, and text files only
