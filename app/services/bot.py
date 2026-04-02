@@ -960,8 +960,11 @@ class BotService:
             "{\n"
             '  "clarification_question": "",\n'
             '  "rooms": [{"name":"","type":"","windows":"","size_sqft":"","has_grow_light":"","city":""}],\n'
-            '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}]\n'
+            '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}],\n'
+            '  "deleted_rooms": ["exact name to delete"],\n'
+            '  "deleted_plants": ["exact name to delete"]\n'
             "}\n"
             "Use empty strings for anything you cannot extract.\n"
+            "DELETION RULE: If the user corrects an AI hallucination or mistake (e.g., 'I don't have a study desk room!'), you MUST add that mistaken entity's precise name to `deleted_rooms` or `deleted_plants`.\n"
             "ONLY use `clarification_question` if the statement is completely bizarre or impossible to map to Section 3. Asking questions is penalized if the answer is logically obvious from the context."
         )

@@ -45,6 +45,8 @@ class PlantSetupStore:
             raise ValueError("Plant setup payload must be a JSON object.")
         payload.setdefault("plants", [])
         payload.setdefault("rooms", [])
+        payload.setdefault("deleted_plants", [])
+        payload.setdefault("deleted_rooms", [])
         payload.setdefault("clarification_question", "")
         return payload
 
@@ -61,6 +63,36 @@ class PlantSetupStore:
         rooms = self.file_manager.read_csv(self.file_manager.rooms_csv_path(user_key))
         plants = self.file_manager.read_csv(self.file_manager.plants_csv_path(user_key))
         write_summaries: list[dict[str, Any]] = []
+
+        deleted_room_names = {str(r).lower() for r in payload.get("deleted_rooms", [])}
+        deleted_plant_names = {str(p).lower() for p in payload.get("deleted_plants", [])}
+
+        if deleted_room_names:
+            filtered_rooms = []
+            for r in rooms:
+                if r.get("name", "").lower() in deleted_room_names:
+                    write_summaries.append({
+                        "agent": "setup_memory_agent",
+                        "file_path": str(self.file_manager.rooms_csv_path(user_key)),
+                        "saved_data": {**r, "write_mode": "deleted"},
+                    })
+                else:
+                    filtered_rooms.append(r)
+            rooms = filtered_rooms
+
+        if deleted_plant_names:
+            filtered_plants = []
+            for p in plants:
+                if p.get("name", "").lower() in deleted_plant_names or p.get("species", "").lower() in deleted_plant_names:
+                    write_summaries.append({
+                        "agent": "setup_memory_agent",
+                        "file_path": str(self.file_manager.plants_csv_path(user_key)),
+                        "saved_data": {**p, "write_mode": "deleted"},
+                    })
+                else:
+                    filtered_plants.append(p)
+            plants = filtered_plants
+
 
         room_id_by_name: dict[str, str] = {}
         for room_payload in payload.get("rooms", []):
