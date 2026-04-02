@@ -1,0 +1,18 @@
+[Unit]
+Description=myPlant FastAPI Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/myplant-bot
+EnvironmentFile=/opt/myplant-bot/.env
+ExecStart=/opt/myplant-bot/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+

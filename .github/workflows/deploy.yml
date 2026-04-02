@@ -1,0 +1,85 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy FastAPI app to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout is kept so the workflow can validate the revision before deployment.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install the SSH private key from GitHub Secrets for a secure EC2 connection.
+      - name: Configure SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
+      # Load a pinned known_hosts entry from secrets so CI verifies the EC2 host identity.
+      - name: Configure known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+
+      # Execute the deployment remotely so the EC2 host always pulls and runs the latest code itself.
+      - name: Deploy application on EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          APP_DIR: ${{ secrets.EC2_APP_DIR }}
+          APP_ENV_FILE_BASE64: ${{ secrets.EC2_ENV_FILE_BASE64 }}
+          GITHUB_REPOSITORY_URL: ${{ secrets.EC2_GITHUB_REPOSITORY_URL }}
+          GITHUB_REPOSITORY_BRANCH: main
+        run: |
+          ssh "${EC2_USER}@${EC2_HOST}" \
+            "APP_DIR='${APP_DIR}' APP_ENV_FILE_BASE64='${APP_ENV_FILE_BASE64}' GITHUB_REPOSITORY_URL='${GITHUB_REPOSITORY_URL}' GITHUB_REPOSITORY_BRANCH='${GITHUB_REPOSITORY_BRANCH}' bash -s" <<'EOF'
+          set -euo pipefail
+
+          APP_NAME="myplant-bot"
+          SERVICE_NAME="${APP_NAME}.service"
+          PYTHON_BIN="python3.11"
+
+          sudo mkdir -p "${APP_DIR}"
+          sudo chown -R "${USER}:${USER}" "${APP_DIR}"
+
+          if [ ! -d "${APP_DIR}/.git" ]; then
+            git clone --branch "${GITHUB_REPOSITORY_BRANCH}" "${GITHUB_REPOSITORY_URL}" "${APP_DIR}"
+          fi
+
+          cd "${APP_DIR}"
+          git fetch --all --prune
+          git checkout "${GITHUB_REPOSITORY_BRANCH}"
+          git reset --hard "origin/${GITHUB_REPOSITORY_BRANCH}"
+
+          if [ -n "${APP_ENV_FILE_BASE64}" ]; then
+            printf '%s' "${APP_ENV_FILE_BASE64}" | base64 --decode > .env
+            chmod 600 .env
+          fi
+
+          if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y python3.11 python3.11-venv
+          fi
+
+          "${PYTHON_BIN}" -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt
+
+          sudo systemctl daemon-reload
+          sudo systemctl restart "${SERVICE_NAME}"
+          sudo systemctl enable "${SERVICE_NAME}"
+          sudo systemctl --no-pager --full status "${SERVICE_NAME}"
+          EOF
