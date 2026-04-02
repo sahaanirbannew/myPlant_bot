@@ -11,7 +11,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.config import load_settings
 from app.models import TelegramUpdate
 from app.services.bot import BotService
+from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
+from app.services.plant_setup_store import PlantSetupStore
 from app.services.session import SessionManager
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
@@ -24,12 +26,19 @@ session_manager = SessionManager(key_store=key_store, timeout_seconds=settings.s
 telegram_client = TelegramClient(bot_token=settings.telegram_bot_token)
 gemini_client = GeminiClient(settings=settings)
 trace_logger = TraceLogger(Path("data/telegram_agent_traces.jsonl"))
+plant_setup_store = PlantSetupStore()
+evening_outreach_store = EveningOutreachStore(
+    registry_path=Path("data/telegram_user_registry.json"),
+    state_path=Path("data/evening_outreach_state.json"),
+)
 bot_service = BotService(
     telegram_client=telegram_client,
     gemini_client=gemini_client,
     session_manager=session_manager,
     key_store=key_store,
     poll_interval_seconds=settings.poll_interval_seconds,
+    plant_setup_store=plant_setup_store,
+    evening_outreach_store=evening_outreach_store,
     trace_logger=trace_logger,
 )
 

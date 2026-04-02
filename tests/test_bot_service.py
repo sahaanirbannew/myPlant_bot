@@ -113,6 +113,7 @@ async def test_handle_message_skips_processing_notice(tmp_path: Path) -> None:
     assert telegram_client.sent_messages == [(12345, "plain answer")]
     assert gemini_client.prompts
     assert gemini_client.prompts[0].startswith('You are "My Plants"')
+    assert "Be concise and objective. Avoid being verbose." in gemini_client.prompts[0]
     assert "User message:\nWhat is the weather?" in gemini_client.prompts[0]
 
 

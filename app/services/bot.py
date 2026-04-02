@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict
 
 from app.models import TelegramMessage
+from app.services.evening_outreach import EveningOutreachStore
 from app.services.gemini import GeminiClient
+from app.services.plant_setup_store import PlantSetupStore
 from app.services.session import SessionManager
 from app.services.storage import UserKeyStore
 from app.services.telegram import TelegramClient
@@ -38,6 +42,7 @@ PERSONALITY
 - Avoid sounding robotic or overly formal
 
 STYLE
+- Keep responses concise and objective
 - Use short to medium length responses
 - Avoid bullet points unless absolutely necessary
 - Use soft language like maybe, might, feels like, or I think
@@ -45,7 +50,9 @@ STYLE
 
 BEHAVIOR
 - Personalize every response using the user's context when it is available
+- Try to gather static setup information over time, especially plant names, species, room type, light direction, room size, grow light use, soil type, fertilizer type, and plant position in the room
 - If information is missing, ask one gentle follow-up question instead of dumping advice
+- If possible, end with one short question that helps collect missing static setup information
 - Never say you are an AI
 - Never give a generic textbook answer
 
@@ -68,6 +75,8 @@ class BotService:
         session_manager: SessionManager,
         key_store: UserKeyStore,
         poll_interval_seconds: int,
+        plant_setup_store: PlantSetupStore | None = None,
+        evening_outreach_store: EveningOutreachStore | None = None,
         trace_logger: TraceLogger | None = None,
     ) -> None:
         """Task: Initialize the bot orchestration service and task registries.
@@ -81,6 +90,8 @@ class BotService:
         self.session_manager = session_manager
         self.key_store = key_store
         self.poll_interval_seconds = poll_interval_seconds
+        self.plant_setup_store = plant_setup_store
+        self.evening_outreach_store = evening_outreach_store
         self.pending_jobs: Dict[int, asyncio.Task[str]] = {}
         self.monitor_tasks: Dict[int, asyncio.Task[None]] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -97,6 +108,10 @@ class BotService:
             self.key_store.ensure_store_exists()
             if self.trace_logger is not None:
                 self.trace_logger.ensure_store_exists()
+            if self.evening_outreach_store is not None:
+                self.evening_outreach_store.ensure_store_exists()
+            if self.plant_setup_store is not None:
+                self.plant_setup_store.file_manager.ensure_workspace()
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         except Exception:
             raise
@@ -132,6 +147,22 @@ class BotService:
         chat_id = message.chat.id
 
         try:
+            if self.evening_outreach_store is not None:
+                registry_record = self.evening_outreach_store.register_user(user_id=user_id, chat_id=chat_id)
+                self._log_trace(
+                    trace_id=trace_id,
+                    level="info",
+                    agent="outreach_registry_agent",
+                    message="Registered Telegram user for proactive outreach.",
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    telegram_text=message.text,
+                    agent_input={"user_id": user_id, "chat_id": chat_id},
+                    agent_output=registry_record,
+                    file_path=str(self.evening_outreach_store.registry_path),
+                    persisted_data=registry_record,
+                )
+
             self._log_trace(
                 trace_id=trace_id,
                 level="info",
@@ -248,6 +279,15 @@ class BotService:
                     reason="Safety filter response sent.",
                 )
                 return
+
+            if session.gemini_api_key and self.plant_setup_store is not None:
+                await self._extract_and_save_setup_context(
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    incoming_text=incoming_text,
+                    api_key=session.gemini_api_key,
+                )
 
             active_job = self.pending_jobs.get(user_id)
             if active_job is not None and not active_job.done():
@@ -453,6 +493,10 @@ class BotService:
 
         try:
             answer = await self.gemini_client.ask_question(api_key=api_key, prompt=prompt)
+            if self.plant_setup_store is not None:
+                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id)
+                if follow_up_question and not answer.rstrip().endswith("?"):
+                    answer = f"{answer.rstrip()} {follow_up_question}"
             self._log_trace(
                 trace_id=trace_id,
                 level="info",
@@ -543,6 +587,7 @@ class BotService:
             while True:
                 await asyncio.sleep(self.poll_interval_seconds)
                 await self.session_manager.cleanup_expired_sessions()
+                await self._run_evening_outreach()
         except asyncio.CancelledError:
             raise
 
@@ -691,7 +736,138 @@ class BotService:
 
         return (
             f"{SYSTEM_PERSONA_PROMPT}\n\n"
+            "Be concise and objective. Avoid being verbose.\n\n"
+            "If you can, end with one short question that helps collect missing static plant setup information.\n\n"
             "User message:\n"
             f"{user_text.strip()}\n\n"
             "Reply with only the final user-facing answer."
         )
+
+    async def _extract_and_save_setup_context(
+        self,
+        trace_id: str,
+        user_id: int,
+        chat_id: int,
+        incoming_text: str,
+        api_key: str,
+    ) -> None:
+        """Task: Infer static plant setup details from a user message and persist them to local files.
+        Input: Trace metadata, the incoming Telegram text, and a Gemini API key for structured extraction.
+        Output: None; saved setup facts are written into the existing My Plants CSV files.
+        Failures: Extraction or parsing failures are logged and suppressed so answering can continue.
+        """
+
+        if self.plant_setup_store is None:
+            return
+
+        setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
+        prompt = (
+            f"{SYSTEM_PERSONA_PROMPT}\n\n"
+            "Extract static plant setup information from the user's latest message.\n"
+            "Be objective and concise.\n"
+            "Return only valid JSON with this shape:\n"
+            "{\n"
+            '  "rooms": [{"name":"","type":"","window_direction":"","size_sqft":"","has_grow_light":"","city":""}],\n'
+            '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}]\n'
+            "}\n"
+            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n\n"
+            f"Saved setup so far:\n{setup_summary}\n\n"
+            f"Latest user message:\n{incoming_text.strip()}"
+        )
+
+        try:
+            raw_payload = await self.gemini_client.ask_question(api_key=api_key, prompt=prompt)
+            parsed_payload = self.plant_setup_store.extract_json_payload(raw_payload)
+            write_summaries = self.plant_setup_store.upsert_setup_payload(user_id=user_id, payload=parsed_payload)
+            self._log_trace(
+                trace_id=trace_id,
+                level="info",
+                agent="setup_memory_agent",
+                message="Extracted static setup information from the Telegram message.",
+                user_id=user_id,
+                chat_id=chat_id,
+                telegram_text=incoming_text,
+                agent_input=prompt,
+                agent_output=parsed_payload,
+            )
+            for write_summary in write_summaries:
+                self._log_trace(
+                    trace_id=trace_id,
+                    level="info",
+                    agent=write_summary["agent"],
+                    message="Saved inferred static setup data.",
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    telegram_text=incoming_text,
+                    agent_input=parsed_payload,
+                    agent_output="Static setup data persisted.",
+                    file_path=write_summary["file_path"],
+                    persisted_data=write_summary["saved_data"],
+                )
+        except Exception as exc:  # noqa: BLE001
+            self._log_trace(
+                trace_id=trace_id,
+                level="error",
+                agent="setup_memory_agent",
+                message="Failed to infer or save static setup information.",
+                user_id=user_id,
+                chat_id=chat_id,
+                telegram_text=incoming_text,
+                error=str(exc),
+            )
+
+    async def _run_evening_outreach(self) -> None:
+        """Task: Proactively send one concise setup question to users during a random evening slot.
+        Input: No direct arguments; uses the current UTC time and local outreach state.
+        Output: None; due users receive a short Telegram question if setup details are still missing.
+        Failures: Outreach errors are logged and suppressed so the background loop keeps running.
+        """
+
+        if self.evening_outreach_store is None or self.plant_setup_store is None:
+            return
+
+        now_utc = datetime.utcnow()
+        local_date = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
+        try:
+            for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC"))):
+                user_id = int(record["user_id"])
+                chat_id = int(record["chat_id"])
+                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id)
+                if not follow_up_question:
+                    self.evening_outreach_store.mark_sent(user_id=user_id, date_key=local_date)
+                    continue
+
+                trace_id = self._new_trace_id()
+                await self._send_and_log(
+                    trace_id=trace_id,
+                    chat_id=chat_id,
+                    text=follow_up_question,
+                    user_id=user_id,
+                    telegram_text="[proactive evening outreach]",
+                    reason="Sent proactive evening setup question.",
+                )
+                self._log_trace(
+                    trace_id=trace_id,
+                    level="info",
+                    agent="outreach_agent",
+                    message="Sent proactive evening outreach question.",
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    telegram_text="[proactive evening outreach]",
+                    agent_input={"local_window": "17:00-19:00", "question": follow_up_question},
+                    agent_output="Outreach message sent.",
+                    file_path=str(self.evening_outreach_store.state_path),
+                    persisted_data={"user_id": user_id, "date": local_date},
+                )
+                self.evening_outreach_store.mark_sent(user_id=user_id, date_key=local_date)
+        except Exception as exc:  # noqa: BLE001
+            self._log_trace(
+                trace_id=self._new_trace_id(),
+                level="error",
+                agent="outreach_agent",
+                message="Failed during evening outreach scheduling.",
+                user_id=None,
+                chat_id=None,
+                telegram_text="[proactive evening outreach]",
+                error=str(exc),
+            )

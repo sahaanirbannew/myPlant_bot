@@ -13,6 +13,9 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Background Gemini question answering with 5 retries and 2-second backoff, without an interim status message
 - Telegram replies are normalized to plain text by removing `**` bold markers from model output
 - Unauthenticated `/dashboard` page for Telegram traces, agent inputs, agent outputs, info logs, and errors
+- Gemini responses are now instructed to stay concise and objective
+- Static plant setup details inferred from Telegram conversations are saved into the existing `my_plants` CSV files
+- Proactive setup questions can be sent between 5 PM and 7 PM at a deterministic random time per user per day
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 - Separate `my_plants/` file-backed backend using CSV, JSON, and text files only
@@ -142,6 +145,28 @@ Gemini prompt behavior:
 
 - The Telegram bot now prefixes the My Plants persona at the start of every Gemini question prompt.
 - The `my_plants` response and reminder layers also begin Gemini prompts with the same persona block.
+- The persona now explicitly asks Gemini to be concise, objective, and to end with one short setup question when that would help collect static plant information.
+
+## Static setup memory
+
+The Telegram bot now tries to infer and save static setup facts from normal user messages, including:
+
+- plant names
+- plant species
+- room type
+- window direction
+- room size
+- grow light use
+- city
+- plant position in the room
+- soil type
+- fertilizer type
+
+These facts are written into the existing `my_plants/data/plants.csv` and `my_plants/data/rooms.csv` files.
+
+## Evening outreach
+
+Known Telegram users are registered for proactive outreach. If setup information is still missing, the bot can send one short follow-up question during the evening window from 5 PM to 7 PM India time at a deterministic random minute for each user and day.
 
 ## Production TLS note
 

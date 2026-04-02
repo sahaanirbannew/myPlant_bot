@@ -174,11 +174,35 @@ Logged agents and stages currently include:
 - `delivery_agent`
 - `bot_service`
 - `storage_agent`
+- `setup_memory_agent`
+- `outreach_registry_agent`
+- `outreach_agent`
 
 Current saved-file visibility:
 
 - Gemini API key submissions and removals are shown with the target CSV path and masked saved payload.
+- Static setup facts inferred from user messages are shown with the exact CSV path and saved row payload.
 - Keys are masked before dashboard logging so the page does not expose the raw secret.
+
+Telegram response behavior:
+
+- The My Plants persona block is placed at the start of every Gemini prompt.
+- Prompts explicitly ask for concise and objective responses.
+- When useful, responses should end with one short question to gather missing static setup information.
+
+Static setup persistence:
+
+- The Telegram bot attempts to infer setup details from user messages using Gemini.
+- Inferred room details are saved to `my_plants/data/rooms.csv`.
+- Inferred plant details are saved to `my_plants/data/plants.csv`.
+- Saved fields now include plant name, species, room, room type, window direction, room size, grow light use, city, plant position, soil type, and fertilizer type when available.
+
+Evening outreach:
+
+- Known Telegram chats are stored in `data/telegram_user_registry.json`.
+- Daily outreach state is stored in `data/evening_outreach_state.json`.
+- If setup information is missing, the bot can proactively send one short setup question during the 5 PM to 7 PM India time window.
+- The send minute is deterministic but pseudo-random per user per day, so outreach times vary without requiring a database or cron state.
 
 ## My Plants file-backed backend
 
@@ -239,6 +263,7 @@ Prompt behavior:
 
 - The My Plants persona block is placed at the start of every Gemini prompt used by the Telegram bot question flow.
 - The same persona block is also placed at the start of Gemini prompts used by the My Plants response and reminder layers.
+- The persona instructions now explicitly require concise and objective responses.
 
 CLI:
 
