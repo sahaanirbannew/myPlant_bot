@@ -106,6 +106,24 @@ class UserKeyStore:
             for record in retained_records:
                 writer.writerow([record.user_id, record.gemini_api_key, record.saved_at])
 
+    def remove_api_key(self, user_id: int) -> None:
+        """Task: Remove all Gemini API key records for a specific user from the CSV store.
+        Input: The numeric Telegram user id.
+        Output: The CSV file rewritten without the user's records.
+        Failures: Raises OSError for read/write issues while rewriting the file.
+        """
+
+        retained_records = [
+            record
+            for record in self._read_all_records()
+            if record.user_id != user_id
+        ]
+        with self.csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(CSV_HEADERS)
+            for record in retained_records:
+                writer.writerow([record.user_id, record.gemini_api_key, record.saved_at])
+
     def _read_all_records(self) -> List[KeyRecord]:
         """Task: Load all Gemini API key records from the CSV store.
         Input: No direct arguments; reads the configured CSV file.
