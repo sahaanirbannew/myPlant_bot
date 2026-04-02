@@ -976,7 +976,8 @@ class BotService:
             "Section 1: Generic Instructions\n"
             "You are a strict backend data extraction system.\n"
             "Task: Extract static plant and room setup data from the Latest User Message.\n"
-            "CRITICAL CONTEXT RULE: If the user answers with a fragment (like 'east', 'monthly', or 'yes'), you MUST look at Section 3 to see what the bot just asked. For example, if the bot asked 'Which direction do the windows face in your bedroom?' and the user replies 'east', you MUST output a bedroom object with windows: east. DO NOT claim it is ambiguous! You MUST infer the missing entity from the bot's question.\n"
+            "CRITICAL CONTEXT RULE: If the user answers with a fragment, you MUST look at Section 3 to see what the bot just asked. For example, if the bot asked 'Which direction do the windows face in your bedroom?' and the user replies 'east', you MUST output a bedroom object with windows: east. DO NOT claim it is ambiguous! You MUST infer the missing entity from the bot's question.\n"
+            "CRITICAL ROOM CLASSIFICATION: Treat specific furniture (like 'study desk', 'windowsill', 'table') as `position_in_room` for a plant, NOT as a structural room! Only classify structural areas (bedroom, living room, office) as rooms.\n"
             "The user may write in any language. Translate extracted values into concise English.\n\n"
             "Section 2: Information about room and elements in the room\n"
             f"{setup_summary}\n\n"
@@ -988,7 +989,7 @@ class BotService:
             "{\n"
             '  "clarification_question": "",\n'
             '  "rooms": [{"name":"","type":"","windows":"","size_sqft":"","has_grow_light":"","city":""}],\n'
-            '  "plants": [{"name":"","species":"","room_name":"","soil_type":"","fertilizer_type":""}],\n'
+            '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}],\n'
             '  "deleted_rooms": ["exact name to delete"],\n'
             '  "deleted_plants": ["exact name to delete"]\n'
             "}\n"
