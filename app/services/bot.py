@@ -934,7 +934,7 @@ class BotService:
         """
 
         return (
-            f"{SYSTEM_PERSONA_PROMPT}\n\n"
+            "You are a strict backend data extraction system.\n"
             "Extract static plant setup information from the user's latest message.\n"
             "Crucially, if the latest message lacks a room name or plant name (e.g., 'east', 'every 5 days'), look at the Recent Conversation Context to infer exactly which room or plant the user is answering about!\n"
             "Be objective and concise.\n"
