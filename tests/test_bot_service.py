@@ -258,4 +258,34 @@ def test_setup_extraction_prompt_requires_english_normalization() -> None:
 
     assert "The user may write in any language." in prompt
     assert "translate every extracted value into concise English before returning JSON" in prompt
+    assert "Do not assume facts." in prompt
+    assert "white-green pothos" in prompt
+    assert '"clarification_question": ""' in prompt
     assert "Latest user message:\nमेरे पौधे रसोई में हैं" in prompt
+
+
+def test_persona_prompt_requires_clarification_instead_of_guessing() -> None:
+    """Task: Verify that the main Gemini answer prompt tells the bot to clarify ambiguous plant details instead of guessing.
+    Input: No filesystem input; constructs the bot service with lightweight fakes.
+    Output: None; assertions confirm the ambiguity-handling instructions in the prompt.
+    Failures: Test fails if the user-facing answer prompt stops discouraging guesses about species or placement.
+    """
+
+    bot_service = BotService(
+        telegram_client=FakeTelegramClient(),
+        gemini_client=FakeGeminiClient(),
+        session_manager=SessionManager(key_store=UserKeyStore(Path("unused.csv")), timeout_seconds=180),
+        key_store=UserKeyStore(Path("unused.csv")),
+        poll_interval_seconds=0,
+    )
+
+    prompt = bot_service._build_persona_prompt(
+        user_text="My white-green pothos is by the window.",
+        setup_summary="No saved plant setup information yet.",
+        follow_up_question="Which window direction is it near?",
+    )
+
+    assert "German man in his mid-40s with a PhD in indoor plants" in prompt
+    assert "Do not pretend to know the exact species, variety, cultivar, room placement, or light setup" in prompt
+    assert "If something important is ambiguous, ask one short clarifying question instead of guessing." in prompt
+    assert "Which window direction is it near?" in prompt

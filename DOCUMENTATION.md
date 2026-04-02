@@ -190,6 +190,8 @@ Telegram response behavior:
 - Prompts explicitly ask for concise and objective responses.
 - When useful, responses should end with one short question to gather missing static setup information.
 - If a user writes in a non-English language, prompts instruct Gemini to reply in that same language.
+- Prompts explicitly tell the bot not to guess species, cultivars, varieties, room placement, or light setup from vague descriptions.
+- If a message is ambiguous, the extraction layer returns one short clarification question and leaves uncertain stored fields empty.
 
 Static setup persistence:
 
@@ -198,6 +200,7 @@ Static setup persistence:
 - Inferred plant details are saved to `my_plants/data/plants.csv`.
 - Saved fields now include plant name, species, room, room type, window direction, room size, grow light use, city, plant position, soil type, and fertilizer type when available.
 - When a user message is in a non-English language, the extracted setup values are translated into English before they are saved.
+- The setup extractor is instructed to avoid assumptions. Example: `white-green pothos` is treated as descriptive but not precise enough to infer an exact variety, so the system should ask for clarification instead of inventing one.
 
 Evening outreach:
 

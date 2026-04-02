@@ -17,6 +17,7 @@ This repository also contains `my_plants`, a file-based plant care assistant cal
 - Static plant setup details inferred from Telegram conversations are saved into the existing `my_plants` CSV files
 - Proactive setup questions can be sent between 5 PM and 7 PM at a deterministic random time per user per day
 - Non-English user messages are understood in place, setup data is normalized into English for storage, and replies stay in the user's language
+- Ambiguous setup details are treated as unknown facts, so the bot asks one short clarifying question instead of guessing species, varieties, or placement
 - GitHub Actions deployment to EC2 over SSH
 - `systemd` service for automatic restart and idempotent production deployment
 - Separate `my_plants/` file-backed backend using CSV, JSON, and text files only
@@ -149,6 +150,7 @@ Gemini prompt behavior:
 - The persona now explicitly asks Gemini to be concise, objective, and to end with one short setup question when that would help collect static plant information.
 - If the user writes in a non-English language, prompts now tell Gemini to answer in that same language.
 - When setup facts are extracted for storage, prompts now tell Gemini to translate the saved values into English.
+- Prompts now explicitly forbid guessing exact species, cultivars, varieties, room placement, or light setup from vague descriptions such as `white-green pothos`.
 
 ## Static setup memory
 
@@ -166,6 +168,8 @@ The Telegram bot now tries to infer and save static setup facts from normal user
 - fertilizer type
 
 These facts are written into the existing `my_plants/data/plants.csv` and `my_plants/data/rooms.csv` files.
+
+When a setup detail is ambiguous, the bot should leave the stored field empty and ask one short clarifying question rather than inventing a fact.
 
 ## Evening outreach
 

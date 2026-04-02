@@ -32,7 +32,7 @@ class PlantSetupStore:
     def extract_json_payload(self, raw_text: str) -> dict[str, Any]:
         """Task: Parse a Gemini response that should contain a JSON setup payload.
         Input: The raw text returned by Gemini, optionally wrapped in code fences.
-        Output: A normalized dictionary with `plants` and `rooms` lists.
+        Output: A normalized dictionary with `plants`, `rooms`, and an optional clarification question.
         Failures: Raises ValueError when valid JSON cannot be extracted.
         """
 
@@ -45,6 +45,7 @@ class PlantSetupStore:
             raise ValueError("Plant setup payload must be a JSON object.")
         payload.setdefault("plants", [])
         payload.setdefault("rooms", [])
+        payload.setdefault("clarification_question", "")
         return payload
 
     def upsert_setup_payload(self, user_id: int, payload: dict[str, Any], timestamp: str | None = None) -> list[dict[str, Any]]:

@@ -32,7 +32,7 @@ JAILBREAK_PATTERNS = (
 
 SYSTEM_PERSONA_PROMPT = """
 You are "My Plants" — a thoughtful, observant, and slightly playful plant-care companion.
-You present as male, age 45, with a PhD in indoor plants.
+You present as a German man in his mid-40s with a PhD in indoor plants, and you speak in English.
 
 You are NOT an AI assistant. Do NOT mention models, training, or technology.
 
@@ -41,6 +41,7 @@ PERSONALITY
 - Speak like a caring friend who understands plants deeply
 - Occasionally tease gently, but never sound rude
 - Avoid sounding robotic or overly formal
+- Be very precise, direct, and to the point
 
 STYLE
 - Keep responses concise and objective
@@ -54,6 +55,8 @@ BEHAVIOR
 - Try to gather static setup information over time, especially plant names, species, room type, light direction, room size, grow light use, soil type, fertilizer type, and plant position in the room
 - If the user's message is not in English, reply in that same language
 - When extracting or saving structured setup details, normalize those saved values into English
+- Never assume an exact species, cultivar, variety, or placement from a vague description
+- If a detail is ambiguous, ask one short follow-up question instead of guessing
 - If information is missing, ask one gentle follow-up question instead of dumping advice
 - If possible, end with one short question that helps collect missing static setup information
 - Never say you are an AI
@@ -283,14 +286,15 @@ class BotService:
                 )
                 return
 
+            setup_clarification_question = ""
             if session.gemini_api_key and self.plant_setup_store is not None:
-                await self._extract_and_save_setup_context(
+                setup_clarification_question = await self._extract_and_save_setup_context(
                     trace_id=trace_id,
                     user_id=user_id,
                     chat_id=chat_id,
                     incoming_text=incoming_text,
                     api_key=session.gemini_api_key,
-                )
+                ) or ""
 
             active_job = self.pending_jobs.get(user_id)
             if active_job is not None and not active_job.done():
@@ -319,7 +323,7 @@ class BotService:
             follow_up_question = ""
             if self.plant_setup_store is not None:
                 setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
-                follow_up_question = self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
+                follow_up_question = setup_clarification_question or self.plant_setup_store.next_missing_setup_question(user_id=user_id) or ""
 
             gemini_prompt = self._build_persona_prompt(
                 user_text=incoming_text,
@@ -761,6 +765,8 @@ class BotService:
             "Be concise and objective. Avoid being verbose.\n\n"
             "If the user's message is not in English, understand it and reply in the same language as the user's message.\n"
             "Keep saved setup data concepts in mind, but do not mention files or internal storage.\n"
+            "Do not pretend to know the exact species, variety, cultivar, room placement, or light setup if the user has only given a vague description.\n"
+            "If something important is ambiguous, ask one short clarifying question instead of guessing.\n"
             "If you ask a follow-up question, keep it to one short sentence.\n"
             f"{setup_block}"
             f"{question_block}\n"
@@ -776,15 +782,15 @@ class BotService:
         chat_id: int,
         incoming_text: str,
         api_key: str,
-    ) -> None:
+    ) -> str:
         """Task: Infer static plant setup details from a user message and persist them to local files.
         Input: Trace metadata, the incoming Telegram text, and a Gemini API key for structured extraction.
-        Output: None; saved setup facts are written into the existing My Plants CSV files.
+        Output: A clarification question string when extraction detects ambiguity, otherwise an empty string.
         Failures: Extraction or parsing failures are logged and suppressed so answering can continue.
         """
 
         if self.plant_setup_store is None:
-            return
+            return ""
 
         setup_summary = self.plant_setup_store.build_user_setup_summary(user_id=user_id)
         prompt = self._build_setup_extraction_prompt(incoming_text=incoming_text, setup_summary=setup_summary)
@@ -818,6 +824,7 @@ class BotService:
                     file_path=write_summary["file_path"],
                     persisted_data=write_summary["saved_data"],
                 )
+            return str(parsed_payload.get("clarification_question", "")).strip()
         except Exception as exc:  # noqa: BLE001
             self._log_trace(
                 trace_id=trace_id,
@@ -829,6 +836,7 @@ class BotService:
                 telegram_text=incoming_text,
                 error=str(exc),
             )
+            return ""
 
     async def _run_evening_outreach(self) -> None:
         """Task: Proactively send one concise setup question to users during a random evening slot.
@@ -899,12 +907,17 @@ class BotService:
             "Be objective and concise.\n"
             "The user may write in any language.\n"
             "Understand the message in that language, but translate every extracted value into concise English before returning JSON.\n"
+            "Do not assume facts. If a plant name, species, cultivar, or placement is ambiguous, leave that field empty.\n"
+            "If the message sounds descriptive rather than botanical, do not invent a plant variety.\n"
+            "Example: 'white-green pothos' is not enough to infer the exact variety.\n"
             "Return only valid JSON with this shape:\n"
             "{\n"
+            '  "clarification_question": "",\n'
             '  "rooms": [{"name":"","type":"","window_direction":"","size_sqft":"","has_grow_light":"","city":""}],\n'
             '  "plants": [{"name":"","species":"","room_name":"","position_in_room":"","soil_type":"","fertilizer_type":""}]\n'
             "}\n"
-            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n\n"
+            "Use empty strings when a field is unknown. Include only concrete facts, not guesses.\n"
+            "If there is an ambiguity, set `clarification_question` to one short English question that would resolve it. Otherwise leave it empty.\n\n"
             f"Saved setup so far:\n{setup_summary}\n\n"
             f"Latest user message:\n{incoming_text.strip()}"
         )

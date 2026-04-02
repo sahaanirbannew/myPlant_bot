@@ -78,8 +78,10 @@ def test_response_generator_uses_gemini_when_configured() -> None:
     assert result == "Pothos feels pretty steady today 🌿"
     assert fake_client.prompts
     assert 'You are "My Plants"' in fake_client.prompts[0]
+    assert "German man in his mid-40s with a PhD in indoor plants" in fake_client.prompts[0]
     assert "Plant name: Pothos" in fake_client.prompts[0]
     assert "Computed watering interval days: 4.0" in fake_client.prompts[0]
+    assert "Do not invent missing species, cultivars, or placement details." in fake_client.prompts[0]
 
 
 def test_reminder_agent_uses_gemini_when_configured() -> None:
