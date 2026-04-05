@@ -66,7 +66,7 @@ graph TD
 - **SessionTracker Agent**: Limits continuous interactions (30 min max per day) and dumps terminated sessions to `<timestamp>.txt` archives for persistent logging.
 - **Static Setup Extractor**: Intercepts natural speech to deduce concrete variables (e.g., room size, plant names) before replying.
 - **Answer Engine**: The core Gemini driver acting strictly within the Anirban persona constraint (Precise, 45, German PhD).
-- **Evening Outreach Agent**: Executes periodically behind the scenes, determining eligibility to dynamically push check-ins during the 5 PM to 7 PM localized window.
+- **Evening Outreach Agent**: Executes periodically behind the scenes, determining eligibility to dynamically push check-ins during the 8:30 PM to 9:00 PM India time window.
 
 ## Project structure
 
@@ -215,7 +215,7 @@ When a setup detail is ambiguous, the bot should leave the stored field empty an
 
 ## Evening outreach
 
-Known Telegram users are registered for proactive outreach. If setup information is still missing, the bot can send one short follow-up question during the evening window from 5 PM to 7 PM India time at a deterministic random minute for each user and day.
+Known Telegram users are registered for proactive outreach. If setup information is still missing, the bot can send one short follow-up question during the evening window from 8:30 PM to 9:00 PM India time at a deterministic random minute for each user and day.
 
 ## Production TLS note
 

@@ -11,6 +11,11 @@ from zoneinfo import ZoneInfo
 
 LOCAL_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
+# Proactive outreach uses a fixed IST window (not the user's check-in preference from setup).
+# Minutes from local midnight: [start, end) — 8:30 PM through 9:00 PM India time.
+EVENING_OUTREACH_WINDOW_START_MINUTES = 20 * 60 + 30
+EVENING_OUTREACH_WINDOW_END_MINUTES = 21 * 60
+
 
 class EveningOutreachStore:
     """Task: Track known Telegram chats and daily proactive outreach state using local JSON files.
@@ -57,11 +62,14 @@ class EveningOutreachStore:
         self._write_json(self.registry_path, payload)
         return record
 
-    def due_users(self, now_utc: datetime, time_slot_store: Any = None) -> list[dict[str, Any]]:
+    def due_users(self, now_utc: datetime) -> list[dict[str, Any]]:
         """Task: Return users whose deterministic evening outreach time has passed and was not sent today.
         Input: The current UTC datetime used to evaluate local evening windows.
         Output: User registry records that should receive a proactive message now.
         Failures: Raises IO or JSON errors if the registry or state cannot be read.
+
+        Outreach always uses the fixed IST window 8:30–9:00 PM, not the user's separate
+        daily check-in preference from setup.
         """
 
         self.ensure_store_exists()
@@ -70,22 +78,20 @@ class EveningOutreachStore:
         now_local = now_utc.astimezone(LOCAL_TIMEZONE)
         today_key = now_local.strftime("%Y-%m-%d")
 
+        window_start = EVENING_OUTREACH_WINDOW_START_MINUTES
+        window_end = EVENING_OUTREACH_WINDOW_END_MINUTES
+        duration_minutes = window_end - window_start
+
         due_records: list[dict[str, Any]] = []
         for user_key, record in registry.items():
-            user_id = int(record["user_id"])
-            if time_slot_store:
-                start_hour, end_hour = time_slot_store.get_time_slot(user_id)
-            else:
-                start_hour, end_hour = 17, 19
-            
-            if now_local.hour < start_hour or now_local.hour >= end_hour:
+            now_minutes = now_local.hour * 60 + now_local.minute
+            if now_minutes < window_start or now_minutes >= window_end:
                 continue
 
-            # Deterministic minute within the user's slot
-            duration_minutes = (end_hour - start_hour) * 60
+            # Deterministic minute within the fixed evening window
             scheduled_offset = sum(ord(character) for character in f"{user_key}:{today_key}") % duration_minutes
-            
-            current_minute_offset = (now_local.hour - start_hour) * 60 + now_local.minute
+
+            current_minute_offset = now_minutes - window_start
             if current_minute_offset < scheduled_offset:
                 continue
             if state.get(user_key) == today_key:
@@ -106,13 +112,14 @@ class EveningOutreachStore:
         self._write_json(self.state_path, payload)
 
     def _scheduled_minute(self, user_key: str, date_key: str) -> int:
-        """Task: Pick a deterministic pseudo-random minute between 5 PM and 7 PM for one user and day.
+        """Task: Pick a deterministic pseudo-random minute offset within the outreach window.
         Input: The string user id and local date key.
-        Output: An integer minute offset within the 120-minute evening window.
+        Output: An integer minute offset within the 8:30–9:00 PM IST window.
         Failures: No failure is expected.
         """
 
-        return sum(ord(character) for character in f"{user_key}:{date_key}") % 120
+        span = EVENING_OUTREACH_WINDOW_END_MINUTES - EVENING_OUTREACH_WINDOW_START_MINUTES
+        return sum(ord(character) for character in f"{user_key}:{date_key}") % span
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         """Task: Read a JSON object from disk.

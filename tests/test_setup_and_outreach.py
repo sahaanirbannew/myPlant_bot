@@ -56,7 +56,7 @@ def test_plant_setup_store_persists_rooms_and_plants(tmp_path: Path) -> None:
 
 
 def test_evening_outreach_store_returns_due_users_in_evening_window(tmp_path: Path) -> None:
-    """Task: Verify that proactive evening outreach is scheduled once per user during the 5 PM to 7 PM window.
+    """Task: Verify proactive outreach during the fixed 8:30–9:00 PM IST window.
     Input: A pytest temporary directory used for the outreach registry and state JSON files.
     Output: None; assertions verify due-user selection and daily send tracking.
     Failures: Test fails if due users are not selected or repeat sends are not suppressed.
@@ -68,9 +68,10 @@ def test_evening_outreach_store_returns_due_users_in_evening_window(tmp_path: Pa
     )
     store.register_user(user_id=123, chat_id=456)
 
-    due_users = store.due_users(now_utc=datetime(2026, 4, 2, 13, 29, tzinfo=timezone.utc))
+    # 15:29 UTC == 20:59 IST (Asia/Kolkata), inside [20:30, 21:00) and past any intra-window offset.
+    due_users = store.due_users(now_utc=datetime(2026, 4, 2, 15, 29, tzinfo=timezone.utc))
     assert due_users
     assert due_users[0]["chat_id"] == 456
 
     store.mark_sent(user_id=123, date_key="2026-04-02")
-    assert store.due_users(now_utc=datetime(2026, 4, 2, 13, 29, tzinfo=timezone.utc)) == []
+    assert store.due_users(now_utc=datetime(2026, 4, 2, 15, 29, tzinfo=timezone.utc)) == []

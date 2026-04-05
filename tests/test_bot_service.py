@@ -96,6 +96,7 @@ async def test_handle_message_skips_processing_notice(tmp_path: Path) -> None:
     key_store.ensure_store_exists()
     session_manager = SessionManager(key_store=key_store, timeout_seconds=180)
     await session_manager.update_api_key(user_id=98765, gemini_api_key="valid-key")
+    await session_manager.mark_setup_complete(user_id=98765)
 
     telegram_client = FakeTelegramClient()
     gemini_client = FakeGeminiClient(answer="plain answer")
@@ -163,6 +164,7 @@ async def test_handle_message_writes_dashboard_trace(tmp_path: Path) -> None:
     key_store.ensure_store_exists()
     session_manager = SessionManager(key_store=key_store, timeout_seconds=180)
     await session_manager.update_api_key(user_id=98765, gemini_api_key="valid-key")
+    await session_manager.mark_setup_complete(user_id=98765)
 
     trace_logger = TraceLogger(tmp_path / "traces.jsonl")
     telegram_client = FakeTelegramClient()

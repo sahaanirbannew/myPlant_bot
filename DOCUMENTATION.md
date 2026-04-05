@@ -228,7 +228,7 @@ Evening outreach:
 
 - Known Telegram chats are stored in `data/telegram_user_registry.json`.
 - Daily outreach state is stored in `data/evening_outreach_state.json`.
-- If setup information is missing, the bot can proactively send one short setup question during the 5 PM to 7 PM India time window.
+- If setup information is missing, the bot can proactively send one short setup question during the 8:30 PM to 9:00 PM India time window.
 - The send minute is deterministic but pseudo-random per user per day, so outreach times vary without requiring a database or cron state.
 
 ## My Plants file-backed backend

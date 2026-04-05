@@ -984,7 +984,7 @@ class BotService:
             return ""
 
     async def _run_evening_outreach(self) -> None:
-        """Task: Proactively send one concise setup question to users during a random evening slot.
+        """Task: Proactively send one concise setup question during the 8:30–9:00 PM IST window.
         Input: No direct arguments; uses the current UTC time and local outreach state.
         Output: None; due users receive a short Telegram question if setup details are still missing.
         Failures: Outreach errors are logged and suppressed so the background loop keeps running.
@@ -996,7 +996,7 @@ class BotService:
         now_utc = datetime.utcnow()
         local_date = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
         try:
-            for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC")), time_slot_store=self.time_slot_store):
+            for record in self.evening_outreach_store.due_users(now_utc=now_utc.replace(tzinfo=ZoneInfo("UTC"))):
                 user_id = int(record["user_id"])
                 chat_id = int(record["chat_id"])
                 if self.session_tracker and self.session_tracker.is_quota_exceeded(user_id):
@@ -1064,7 +1064,7 @@ class BotService:
                     user_id=user_id,
                     chat_id=chat_id,
                     telegram_text="[proactive evening outreach]",
-                    agent_input={"local_window": "17:00-19:00", "question": follow_up_question},
+                    agent_input={"local_window": "20:30-21:00 IST", "question": follow_up_question},
                     agent_output="Outreach message sent.",
                     file_path=str(self.evening_outreach_store.state_path),
                     persisted_data={"user_id": user_id, "date": local_date},
